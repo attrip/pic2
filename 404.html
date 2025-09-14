@@ -154,11 +154,10 @@
       }
       function getAllText(){ return messages.map(m=>m.text).join('\n'); }
       function updateCounts(){ const t = getAllText(); const words=(t.trim().match(/\S+/g)||[]).length; el('wc').textContent=String(words); el('cc').textContent=String(t.length); }
-      function persist(){ try { localStorage.setItem('pd_msgs', JSON.stringify(messages)); el('save').textContent='保存済み'; } catch(e){} }
-      // restore
-      try { const raw = localStorage.getItem('pd_msgs'); if(raw){ messages = JSON.parse(raw)||[]; renderChat(); } } catch(e) {}
+      function persist(){ /* 永続保存しない（前回の入力を残さない） */ el('save').textContent=''; }
+      // restore（無効化: 前回の内容は復元しない）
       // start on first input typing
-      inputEl.addEventListener('input', ()=>{ if(!hasStarted && !timerId && remaining===duration){ start(); } autoresizeInput(); el('save').textContent='入力中…'; });
+      inputEl.addEventListener('input', ()=>{ if(!hasStarted && !timerId && remaining===duration){ start(); } autoresizeInput(); el('save').textContent=''; });
       inputEl.addEventListener('keydown', (ev)=>{
         if (ev.key === 'Enter' && !ev.shiftKey){ ev.preventDefault(); sendCurrent(); }
       });
@@ -238,8 +237,7 @@
         autoresizeInput();
         renderChat();
         persist();
-        el('save').textContent = '取り消しました';
-        setTimeout(()=>{ el('save').textContent = '保存済み'; }, 1200);
+        showToast('取り消しました');
       }
       window.addEventListener('keydown', (ev)=>{
         if ((ev.metaKey || ev.ctrlKey) && ev.key.toLowerCase() === 'z' && !ev.shiftKey) {
