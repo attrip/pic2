@@ -35,9 +35,26 @@
       .small { color: var(--muted); font-size: .9em; }
       a { color: #06c; text-decoration: none; }
       a:hover { text-decoration: underline; }
+
+      /* 集中モード（UIクロームを最小化） */
+      body.zen .note,
+      body.zen .controls,
+      body.zen .statusline { display: none; }
+      body.zen .wrap { margin-top: 24px; }
+      body.zen .chat { background: transparent; border: none; box-shadow: none; padding: 0; }
+      body.zen .composer textarea { background: #fff; }
+      .chromeToggle { position: fixed; top: 10px; right: 10px; opacity: .5; background: #eef6f3; border-radius: 999px; padding: 6px 10px; border: 1px solid #dceae5; box-shadow: 0 2px 8px rgba(0,0,0,.05); cursor: pointer; }
+      .chromeToggle:hover { opacity: .9; }
+      body.zen .topbar .timer { position: fixed; top: 12px; left: 12px; font-size: 16px; opacity: .65; }
+      body.zen .progress { position: fixed; top: 0; left: 0; right: 0; height: 2px; border-radius: 0; }
+
+      /* トースト通知 */
+      #toast { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); background: rgba(20,20,20,.9); color: #fff; padding: 10px 14px; border-radius: 10px; font-size: 14px; opacity: 0; pointer-events: none; transition: opacity .2s ease; }
+      #toast.show { opacity: 1; }
     </style>
   </head>
   <body>
+    <button id="chromeToggle" class="chromeToggle" title="UI表示切替">•••</button>
     <div class="wrap">
       <h1>Picture Diary</h1>
       <p class="note">文章だけに集中してください。音楽と画像の提案は自動で行います。書き始めると 25 分タイマーがスタートします（⌘/Ctrl + Enter で生成）。</p>
@@ -71,6 +88,7 @@
       </div>
       </section>
     </div>
+    <div id="toast" role="status" aria-live="polite"></div>
 
     <script>
       const el = (id) => document.getElementById(id);
@@ -197,8 +215,8 @@
       document.querySelectorAll('[data-copy]').forEach(btn => btn.addEventListener('click', async (e)=>{
         const id = e.currentTarget.getAttribute('data-copy');
         const v = el(id).value || '';
-        try { await navigator.clipboard.writeText(v); alert('コピーしました'); } catch(err){
-          el(id).select(); document.execCommand('copy'); alert('コピーしました');
+        try { await navigator.clipboard.writeText(v); showToast('コピーしました'); } catch(err){
+          el(id).select(); document.execCommand('copy'); showToast('コピーしました');
         }
       }));
       // Shortcut: ⌘/Ctrl + Enter で生成
@@ -224,6 +242,24 @@
           }
         }
       });
+      // UI chrome toggle: Esc または 右上ボタン
+      function setZen(on){ document.body.classList.toggle('zen', !!on); }
+      el('chromeToggle').addEventListener('click', ()=>{ document.body.classList.toggle('zen'); });
+      window.addEventListener('keydown', (ev)=>{
+        if (ev.key === 'Escape') { document.body.classList.toggle('zen'); }
+      });
+      setZen(true);
+      inputEl.focus();
+
+      // Toast utility
+      function showToast(text){
+        const t = el('toast');
+        if (!t) return;
+        t.textContent = text;
+        t.classList.add('show');
+        clearTimeout(showToast._h);
+        showToast._h = setTimeout(()=> t.classList.remove('show'), 1200);
+      }
     </script>
   </body>
   </html>
