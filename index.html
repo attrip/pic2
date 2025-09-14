@@ -203,16 +203,6 @@
       window.addEventListener('keydown', (ev)=>{
         if ((ev.metaKey || ev.ctrlKey) && ev.key.toLowerCase() === 'enter') { ev.preventDefault(); generate(); }
       });
-      // Shortcut: ⌘/Ctrl + Z で直前の送信を取り消し（入力欄が空のとき）
-      function undoLastSend(){
-        if (messages.length === 0) return;
-        const last = messages.pop();
-        inputEl.value = last.text;
-        autoresizeInput();
-        renderChat();
-        persist();
-        showToast('取り消しました');
-      }
       // チャットの取り消しショートカットは廃止
       // UI chrome toggle: Esc または 右上ボタン
       function setZen(on){ document.body.classList.toggle('zen', !!on); }
