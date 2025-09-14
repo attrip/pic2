@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Picture Diary — 25分集中して書く（書きやすさ改善）</title>
+    <title>Picture Diary — 25分集中チャット入力</title>
     <style>
       :root { --bg:#faf7f2; --fg:#222; --muted:#666; --accent:#4b9; --surface:#fff; --shadow:0 8px 32px rgba(0,0,0,.06); }
       html, body { height: 100%; }
@@ -19,9 +19,14 @@
       button { padding: 10px 14px; font-size: 14px; border: 0; border-radius: 8px; background: #eff7f5; color: #135; cursor: pointer; }
       button:hover { filter: brightness(0.98); }
       button:active { transform: translateY(1px); }
-      textarea#diary { width: 100%; min-height: 360px; padding: 18px 18px 28px; font-size: 18px; line-height: 1.85; box-sizing: border-box; border-radius: 14px; border: 1px solid #e8e2da; background: var(--surface); box-shadow: var(--shadow); caret-color: #222; }
-      textarea#diary::placeholder { color: #9a8; opacity: .7; }
-      textarea#diary:focus { outline: 2px solid #bfe9dd; outline-offset: 2px; }
+      .chat { margin-top: 12px; background: var(--surface); border: 1px solid #e8e2da; border-radius: 14px; box-shadow: var(--shadow); padding: 12px; max-height: 60vh; overflow: auto; }
+      .bubble { background: #f5faf8; border: 1px solid #e0eee9; display: inline-block; padding: 10px 12px; border-radius: 12px; margin: 6px 0; max-width: 100%; white-space: pre-wrap; word-break: break-word; }
+      .row { display: flex; gap: 8px; }
+      .me { justify-content: flex-start; }
+      .meta { color: #9aa; font-size: .8em; margin-top: 2px; }
+      .composer { display: flex; gap: 8px; align-items: flex-end; margin-top: 10px; }
+      .composer textarea { flex: 1; min-height: 46px; max-height: 200px; padding: 12px 12px; font-size: 16px; line-height: 1.6; border-radius: 10px; border: 1px solid #e8e2da; box-shadow: inset 0 1px 0 rgba(0,0,0,.03); resize: none; }
+      .composer textarea:focus { outline: 2px solid #bfe9dd; outline-offset: 2px; }
       .statusline { display:flex; justify-content: space-between; color: var(--muted); font-size: .92em; margin: 8px 2px 0; }
       .hidden { display: none; }
       .out { margin-top: 22px; }
@@ -47,7 +52,11 @@
         <button id="generate">今すぐ生成</button>
       </div>
 
-      <textarea id="diary" placeholder="いまの気持ち、出来事、印象的だった情景、音や匂いまで。句読点は気にせず、流れるように書いてみましょう。"></textarea>
+      <div id="chat" class="chat" aria-live="polite"></div>
+      <div class="composer">
+        <textarea id="msgInput" placeholder="ここに書いて Enter で送信（改行は Shift+Enter）"></textarea>
+        <button id="send">送信</button>
+      </div>
       <div class="statusline">
         <div><span id="wc">0</span> words ・ <span id="cc">0</span> chars</div>
         <div id="save">&nbsp;</div>
@@ -97,25 +106,38 @@
       el('reset').addEventListener('click', reset);
       el('generate').addEventListener('click', generate);
       renderTimer();
-      // 自動開始 + オートリサイズ + カウント + 自動保存
-      const diaryEl = el('diary');
-      function autoresize(){ diaryEl.style.height = 'auto'; diaryEl.style.height = Math.min(1200, diaryEl.scrollHeight + 2) + 'px'; }
-      function counts(){
-        const text = diaryEl.value || '';
-        const words = (text.trim().match(/\S+/g) || []).length;
-        el('wc').textContent = String(words);
-        el('cc').textContent = String(text.length);
+      // チャット入力: メッセージ配列 + 自動開始 + 入力オートリサイズ + カウント + 自動保存
+      const chatEl = el('chat');
+      const inputEl = el('msgInput');
+      let messages = [];
+      function renderChat(){
+        chatEl.innerHTML = messages.map(m => `
+          <div class="row me">
+            <div>
+              <div class="bubble">${escapeHtml(m.text)}</div>
+              <div class="meta">${m.time}</div>
+            </div>
+          </div>
+        `).join('');
+        chatEl.scrollTop = chatEl.scrollHeight;
+        updateCounts();
       }
-      let saveTick;
-      diaryEl.addEventListener('input', ()=>{
-        if(!hasStarted && !timerId && remaining === duration){ start(); }
-        autoresize(); counts();
-        clearTimeout(saveTick);
-        el('save').textContent = '自動保存中…';
-        saveTick = setTimeout(()=>{ try { localStorage.setItem('pd_text', diaryEl.value); el('save').textContent = '保存済み'; } catch(e) { el('save').textContent = ''; } }, 400);
+      function now(){ const d=new Date(); return `${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`; }
+      function escapeHtml(s){ return (s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[c])); }
+      function autoresizeInput(){ inputEl.style.height='auto'; inputEl.style.height=Math.min(200, inputEl.scrollHeight)+'px'; }
+      function addMessage(text){ if(!text.trim()) return; messages.push({ text: text.trim(), time: now() }); renderChat(); persist(); }
+      function getAllText(){ return messages.map(m=>m.text).join('\n'); }
+      function updateCounts(){ const t = getAllText(); const words=(t.trim().match(/\S+/g)||[]).length; el('wc').textContent=String(words); el('cc').textContent=String(t.length); }
+      function persist(){ try { localStorage.setItem('pd_msgs', JSON.stringify(messages)); el('save').textContent='保存済み'; } catch(e){} }
+      // restore
+      try { const raw = localStorage.getItem('pd_msgs'); if(raw){ messages = JSON.parse(raw)||[]; renderChat(); } } catch(e) {}
+      // start on first input typing
+      inputEl.addEventListener('input', ()=>{ if(!hasStarted && !timerId && remaining===duration){ start(); } autoresizeInput(); el('save').textContent='入力中…'; });
+      inputEl.addEventListener('keydown', (ev)=>{
+        if (ev.key === 'Enter' && !ev.shiftKey){ ev.preventDefault(); sendCurrent(); }
       });
-      // 復元
-      try { const t = localStorage.getItem('pd_text'); if(t){ diaryEl.value = t; autoresize(); counts(); } } catch(e) {}
+      el('send').addEventListener('click', sendCurrent);
+      function sendCurrent(){ const t = inputEl.value; inputEl.value=''; autoresizeInput(); addMessage(t); }
 
       // Infer music/image from text
       function inferMusic(text){
@@ -139,7 +161,7 @@
       }
 
       function generate(){
-        const text = el('diary').value || '';
+        const text = getAllText();
         const s = summary(text);
         const m = inferMusic(text);
         const img = inferImage(text);
