@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Picture Diary — 25分集中して書く</title>
+    <title>Picture Diary — 25分集中して書く（シンプル）</title>
     <style>
       body { font-family: system-ui, -apple-system, sans-serif; margin: 28px; line-height: 1.6; }
       h1 { margin: 0 0 4px; }
@@ -15,7 +15,7 @@
       .hidden { display: none; }
       .out { margin-top: 18px; }
       .out h3 { margin: 18px 0 6px; }
-      textarea.output, pre.output { width: 100%; background: #0c0c0c; color: #e5ffe5; padding: 12px; border-radius: 6px; box-sizing: border-box; }
+      textarea.output { width: 100%; background: #0c0c0c; color: #e5ffe5; padding: 12px; border-radius: 6px; box-sizing: border-box; }
       textarea.output { min-height: 120px; white-space: pre-wrap; }
       .small { color: #666; font-size: .9em; }
       a { color: #06c; }
@@ -23,7 +23,7 @@
   </head>
   <body>
     <h1>Picture Diary</h1>
-    <p class="note">文章だけを書いてください。音楽（Suno用）と画像の依頼は、あなたの文章から自動で提案します。25分タイマーで集中できます。</p>
+    <p class="note">文章だけを書いてください。音楽と画像はテキストから自動推定します。25分タイマーで集中できます。</p>
 
     <div class="timer" id="timer">25:00</div>
     <div class="controls">
@@ -35,19 +35,12 @@
     <textarea id="diary" placeholder="ここに自由に書いてください。"></textarea>
 
     <section id="outputs" class="out hidden">
-      <h3>会話開始用まとめプロンプト</h3>
+      <h3>ChatGPT へ渡す依頼文（まとめ）</h3>
       <textarea id="chatOut" class="output" readonly></textarea>
-      <button data-copy="chatOut">コピー</button>
-
-      <h3>音楽依頼（Suno 向け）</h3>
-      <textarea id="sunoOut" class="output" readonly></textarea>
-      <button data-copy="sunoOut">コピー</button>
-
-      <h3>画像依頼</h3>
-      <textarea id="imageOut" class="output" readonly></textarea>
-      <button data-copy="imageOut">コピー</button>
-
-      <p class="small">他のページ: <a href="./v2/index.html">v2</a></p>
+      <div style="display:flex; gap:8px; margin-top:8px;">
+        <button data-copy="chatOut">コピー</button>
+        <a href="https://chat.openai.com/" target="_blank" rel="noopener noreferrer"><button>ChatGPT を開く</button></a>
+      </div>
     </section>
 
     <script>
@@ -61,16 +54,7 @@
       let timerId = null;
       let hasStarted = false;
       function renderTimer(){ el('timer').textContent = `${fmt(Math.floor(remaining/60))}:${fmt(remaining%60)}`; }
-      function beep(){
-        try {
-          const ctx = new (window.AudioContext || window.webkitAudioContext)();
-          const o = ctx.createOscillator();
-          const g = ctx.createGain();
-          o.type = 'sine'; o.frequency.value = 880; o.connect(g); g.connect(ctx.destination);
-          g.gain.setValueAtTime(0.001, ctx.currentTime); g.gain.exponentialRampToValueAtTime(0.1, ctx.currentTime+0.01);
-          o.start(); setTimeout(()=>{ o.stop(); ctx.close(); }, 500);
-        } catch(e) {}
-      }
+      function beep(){}
       function start(){
         if(timerId) return;
         timerId = setInterval(()=>{
@@ -121,48 +105,25 @@
         const img = inferImage(text);
 
         const chatSeed = [
-          'あなたはライティングの相棒です。以下の文章を材料に、短い要約と内省を返し、その内容に最も合う音楽と画像の方向性を日本語で提案してください。',
+          'あなたは私の相棒です。以下の文章を材料に、短い要約と内省（各1〜3文）を返し、その内容に最も合う音楽（Sunoで実現可能）と画像の方向性を日本語で具体提案してください。',
           '',
-          `入力: ${s || '(なし)'}`,
+          `【入力】\n${s || '(なし)'}`,
           '',
-          '要件:',
-          '- 要約は3文以内。',
-          '- 音楽は Suno で実現できる具体的なスタイル/BPM/編成の提案。',
-          '- 画像はシーンとスタイルの提案（1行の依頼文も）。',
-          '- 以後の会話で微調整しながら完成させる。'
-        ].join('\n');
-
-        const sunoPrompt = [
-          'Suno への依頼（貼り付け用）:',
-          `- スタイル: ${m.style}`,
-          `- BPM: ${m.bpm}`,
-          `- 編成: ${m.instruments.join(', ')}`,
-          '- 構成: Intro(8) → Verse(16) → Chorus(16) → Bridge(8) → Chorus(16) → Outro(8)',
-          `- キーワード: ${s}`,
-          '例: 雰囲気に合う短い日本語のボーカルフレーズを挿入（任意）。'
-        ].join('\n');
-
-        const imagePrompt = [
-          '画像生成 依頼文（貼り付け用）:',
-          `- シーン: ${img.subject}（文章の要約に基づく）`,
-          `- スタイル: ${img.style}`,
-          `- テキスト要約: ${s}`,
-          '1行プロンプト: ',
-          `${img.subject}, ${img.style}, high detail, soft light, 16:9`
+          '【出力要件】',
+          '- 要約（1〜3文）',
+          '- 内省（1〜3文）',
+          `- 音楽の提案（例: スタイル=${m.style}, BPM=${m.bpm}, 編成=${m.instruments.join(', ')})`,
+          '- Sunoに貼れる依頼文（1〜5行）',
+          `- 画像の提案（例: シーン=${img.subject}, スタイル=${img.style})`,
+          '- 画像生成向けの1行プロンプト',
+          '- 以後はこの結果を起点に日本語で会話しながら調整する',
         ].join('\n');
 
         el('chatOut').value = chatSeed;
-        el('sunoOut').value = sunoPrompt;
-        el('imageOut').value = imagePrompt;
         el('outputs').classList.remove('hidden');
-
-        try { localStorage.setItem('pd_text', text); } catch(e) {}
       }
 
-      // Restore last text
-      (function(){ try { const t = localStorage.getItem('pd_text'); if(t) el('diary').value = t; } catch(e) {} })();
-
-      // Copy buttons
+      // Copy button
       document.querySelectorAll('[data-copy]').forEach(btn => btn.addEventListener('click', async (e)=>{
         const id = e.currentTarget.getAttribute('data-copy');
         const v = el(id).value || '';
