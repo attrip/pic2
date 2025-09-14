@@ -71,6 +71,9 @@
         <button id="generate">今すぐ生成</button>
         <button id="advice">アドバイス作成</button>
         <button id="pres">プレゼン支援</button>
+        <button id="music">音楽依頼</button>
+        <button id="rap">ラップ作成</button>
+        <button id="image">画像依頼</button>
       </div>
 
       <!-- チャットUIは削除 -->
@@ -240,6 +243,57 @@
         el('outputs').classList.remove('hidden');
       }
 
+      function generateMusicOnly(){
+        const text = currentText();
+        const s = summary(text);
+        const m = inferMusic(text);
+        const seed = [
+          'Suno への依頼（貼り付け用）:',
+          `- スタイル: ${m.style}`,
+          `- BPM: ${m.bpm}`,
+          `- 編成: ${m.instruments.join(', ') || '(任意)'}`,
+          '- 構成: Intro(8) → Verse(16) → Chorus(16) → Bridge(8) → Chorus(16) → Outro(8)',
+          `- キーワード: ${s}`,
+          '雰囲気に合う短い日本語のボーカルフレーズを入れてください（任意）。',
+        ].join('\n');
+        el('chatOut').value = seed;
+        el('outputs').classList.remove('hidden');
+      }
+
+      function generateRap(){
+        const text = currentText();
+        const s = summary(text);
+        const m = inferMusic(text);
+        const style = (m.style.includes('trap') || m.bpm >= 130) ? 'modern trap' : 'boom bap / lo-fi';
+        const seed = [
+          'ラップ作成依頼（貼り付け用）:',
+          `- テーマ: ${s}`,
+          `- スタイル: ${style}`,
+          `- BPM目安: ${m.bpm}`,
+          '- 構成: Intro(4) → Verse(16) → Hook(8) → Verse(16) → Hook(8) → Outro(4)',
+          '- 条件: 日本語。内部韻/脚韻を適度に。フローは自然に。卑語NG。',
+          '- 出力: セクション見出しを付け、歌いやすい行単位で。',
+        ].join('\n');
+        el('chatOut').value = seed;
+        el('outputs').classList.remove('hidden');
+      }
+
+      function generateImageOnly(){
+        const text = currentText();
+        const s = summary(text);
+        const img = inferImage(text);
+        const seed = [
+          '画像生成 依頼文（貼り付け用）:',
+          `- シーン: ${img.subject}（文章の要約に基づく）`,
+          `- スタイル: ${img.style}`,
+          `- テキスト要約: ${s}`,
+          '1行プロンプト:',
+          `${img.subject}, ${img.style}, high detail, soft light, 16:9`,
+        ].join('\n');
+        el('chatOut').value = seed;
+        el('outputs').classList.remove('hidden');
+      }
+
       // Copy button
       document.querySelectorAll('[data-copy]').forEach(btn => btn.addEventListener('click', async (e)=>{
         const id = e.currentTarget.getAttribute('data-copy');
@@ -255,6 +309,9 @@
       // アクションボタン
       el('advice').addEventListener('click', generateAdvice);
       el('pres').addEventListener('click', generatePresentation);
+      el('music').addEventListener('click', generateMusicOnly);
+      el('rap').addEventListener('click', generateRap);
+      el('image').addEventListener('click', generateImageOnly);
       // チャットの取り消しショートカットは廃止
       // UI chrome toggle: Esc または 右上ボタン
       function setZen(on){ document.body.classList.toggle('zen', !!on); }
