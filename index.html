@@ -3,6 +3,9 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
     <title>Picture Diary — 25分集中チャット入力</title>
     <style>
       :root { --bg:#faf7f2; --fg:#222; --muted:#666; --accent:#4b9; --surface:#fff; --shadow:0 8px 32px rgba(0,0,0,.06); }
@@ -45,6 +48,8 @@
       body.zen .composer textarea { background: #fff; }
       .chromeToggle { position: fixed; top: 10px; right: 10px; opacity: .5; background: #eef6f3; border-radius: 999px; padding: 6px 10px; border: 1px solid #dceae5; box-shadow: 0 2px 8px rgba(0,0,0,.05); cursor: pointer; }
       .chromeToggle:hover { opacity: .9; }
+      .newSession { position: fixed; top: 10px; right: 56px; opacity: .6; background: #ffe; border-radius: 999px; padding: 6px 10px; border: 1px solid #eee2a8; box-shadow: 0 2px 8px rgba(0,0,0,.05); cursor: pointer; }
+      .newSession:hover { opacity: .95; }
       body.zen .topbar .timer { position: fixed; top: 12px; left: 12px; font-size: 16px; opacity: .65; }
       body.zen .progress { position: fixed; top: 0; left: 0; right: 0; height: 2px; border-radius: 0; }
 
@@ -54,6 +59,7 @@
     </style>
   </head>
   <body>
+    <button id="newSession" class="newSession" title="新規セッション（全部クリア）">新規</button>
     <button id="chromeToggle" class="chromeToggle" title="UI表示切替">•••</button>
     <div class="wrap">
       <h1>Picture Diary</h1>
@@ -155,7 +161,8 @@
       function getAllText(){ return messages.map(m=>m.text).join('\n'); }
       function updateCounts(){ const t = getAllText(); const words=(t.trim().match(/\S+/g)||[]).length; el('wc').textContent=String(words); el('cc').textContent=String(t.length); }
       function persist(){ /* 永続保存しない（前回の入力を残さない） */ el('save').textContent=''; }
-      // restore（無効化: 前回の内容は復元しない）
+      // restore（無効化: 前回の内容は復元しない）かつ旧キーを掃除
+      try { localStorage.removeItem('pd_msgs'); localStorage.removeItem('pd_text'); } catch(e) {}
       // start on first input typing
       inputEl.addEventListener('input', ()=>{ if(!hasStarted && !timerId && remaining===duration){ start(); } autoresizeInput(); el('save').textContent=''; });
       inputEl.addEventListener('keydown', (ev)=>{
@@ -250,6 +257,22 @@
       // UI chrome toggle: Esc または 右上ボタン
       function setZen(on){ document.body.classList.toggle('zen', !!on); }
       el('chromeToggle').addEventListener('click', ()=>{ document.body.classList.toggle('zen'); });
+      // New session: 全ての入力/出力/タイマーをクリア
+      function newSession(){
+        messages = [];
+        renderChat();
+        inputEl.value = '';
+        autoresizeInput();
+        // hide outputs and clear
+        el('chatOut').value = '';
+        el('outputs').classList.add('hidden');
+        // clear any stored legacy keys
+        try { localStorage.removeItem('pd_msgs'); localStorage.removeItem('pd_text'); } catch(e) {}
+        // reset timer
+        pause(); remaining = duration; hasStarted = false; renderTimer(); el('startPause').textContent='開始';
+        showToast('新規セッションを開始しました');
+      }
+      el('newSession').addEventListener('click', newSession);
       window.addEventListener('keydown', (ev)=>{
         if (ev.key === 'Escape') { document.body.classList.toggle('zen'); }
       });
