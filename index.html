@@ -110,6 +110,7 @@
       const chatEl = el('chat');
       const inputEl = el('msgInput');
       let messages = [];
+      let undoStack = [];
       function renderChat(){
         chatEl.innerHTML = messages.map(m => `
           <div class="row me">
@@ -125,7 +126,14 @@
       function now(){ const d=new Date(); return `${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`; }
       function escapeHtml(s){ return (s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[c])); }
       function autoresizeInput(){ inputEl.style.height='auto'; inputEl.style.height=Math.min(200, inputEl.scrollHeight)+'px'; }
-      function addMessage(text){ if(!text.trim()) return; messages.push({ text: text.trim(), time: now() }); renderChat(); persist(); }
+      function addMessage(text){
+        if(!text.trim()) return;
+        const msg = { text: text.trim(), time: now() };
+        messages.push(msg);
+        undoStack.push({ type: 'send', message: msg });
+        renderChat();
+        persist();
+      }
       function getAllText(){ return messages.map(m=>m.text).join('\n'); }
       function updateCounts(){ const t = getAllText(); const words=(t.trim().match(/\S+/g)||[]).length; el('wc').textContent=String(words); el('cc').textContent=String(t.length); }
       function persist(){ try { localStorage.setItem('pd_msgs', JSON.stringify(messages)); el('save').textContent='保存済み'; } catch(e){} }
@@ -196,6 +204,25 @@
       // Shortcut: ⌘/Ctrl + Enter で生成
       window.addEventListener('keydown', (ev)=>{
         if ((ev.metaKey || ev.ctrlKey) && ev.key.toLowerCase() === 'enter') { ev.preventDefault(); generate(); }
+      });
+      // Shortcut: ⌘/Ctrl + Z で直前の送信を取り消し（入力欄が空のとき）
+      function undoLastSend(){
+        if (messages.length === 0) return;
+        const last = messages.pop();
+        inputEl.value = last.text;
+        autoresizeInput();
+        renderChat();
+        persist();
+        el('save').textContent = '取り消しました';
+        setTimeout(()=>{ el('save').textContent = '保存済み'; }, 1200);
+      }
+      window.addEventListener('keydown', (ev)=>{
+        if ((ev.metaKey || ev.ctrlKey) && ev.key.toLowerCase() === 'z' && !ev.shiftKey) {
+          if (document.activeElement === inputEl && (inputEl.value || '').length === 0) {
+            ev.preventDefault();
+            undoLastSend();
+          }
+        }
       });
     </script>
   </body>
