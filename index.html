@@ -69,6 +69,8 @@
         <button id="startPause">開始</button>
         <button id="reset">リセット</button>
         <button id="generate">今すぐ生成</button>
+        <button id="advice">アドバイス作成</button>
+        <button id="pres">プレゼン支援</button>
       </div>
 
       <!-- チャットUIは削除 -->
@@ -159,8 +161,19 @@
         return {style:'minimal, soft light, clean composition', subject:'印象的な日常の瞬間'};
       }
 
+      function currentText(){
+        // 選択範囲があれば優先し、なければ全文
+        const t = plainEl.value || '';
+        const start = plainEl.selectionStart ?? 0;
+        const end = plainEl.selectionEnd ?? 0;
+        if (end > start && (t.slice(start, end).trim().length > 0)) {
+          return t.slice(start, end);
+        }
+        return t;
+      }
+
       function generate(){
-        const text = getAllText();
+        const text = currentText();
         const s = summary(text);
         const m = inferMusic(text);
         const img = inferImage(text);
@@ -191,6 +204,42 @@
         el('outputs').classList.remove('hidden');
       }
 
+      function generateAdvice(){
+        const text = currentText();
+        const s = summary(text);
+        const chatSeed = [
+          '以下の文章に対して、執筆を前に進めるための具体的なアドバイスをください。',
+          '',
+          `【対象テキスト】\n${s || '(なし)'}`,
+          '',
+          '【欲しい出力】',
+          '- 視点の整理（何を主張したいか1〜2文）',
+          '- 構成の提案（小見出し3つ程度）',
+          '- 具体化ポイント（例や数字の入れ所）',
+          '- 次に書くべき1〜3ステップ（チェックリスト）',
+        ].join('\n');
+        el('chatOut').value = chatSeed;
+        el('outputs').classList.remove('hidden');
+      }
+
+      function generatePresentation(){
+        const text = currentText();
+        const s = summary(text);
+        const chatSeed = [
+          '【プレゼン支援】以下の材料から、短時間で形にできるプレゼン案を作ってください。',
+          '',
+          `【材料】\n${s || '(なし)'}`,
+          '',
+          '【出力】',
+          '- 目的（1文）',
+          '- 3本柱（強み/接点/未来）',
+          '- スライド構成案（8〜10枚、各: タイトル/一文/補足）',
+          '- 最後に「相手にどう動いてほしいか」を再強調',
+        ].join('\n');
+        el('chatOut').value = chatSeed;
+        el('outputs').classList.remove('hidden');
+      }
+
       // Copy button
       document.querySelectorAll('[data-copy]').forEach(btn => btn.addEventListener('click', async (e)=>{
         const id = e.currentTarget.getAttribute('data-copy');
@@ -203,6 +252,9 @@
       window.addEventListener('keydown', (ev)=>{
         if ((ev.metaKey || ev.ctrlKey) && ev.key.toLowerCase() === 'enter') { ev.preventDefault(); generate(); }
       });
+      // アクションボタン
+      el('advice').addEventListener('click', generateAdvice);
+      el('pres').addEventListener('click', generatePresentation);
       // チャットの取り消しショートカットは廃止
       // UI chrome toggle: Esc または 右上ボタン
       function setZen(on){ document.body.classList.toggle('zen', !!on); }
