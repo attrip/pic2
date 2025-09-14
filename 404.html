@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Picture Diary — 25分集中して書く</title>
+    <style>
+      body { font-family: system-ui, -apple-system, sans-serif; margin: 28px; line-height: 1.6; }
+      h1 { margin: 0 0 4px; }
+      .note { color: #555; font-size: 0.95em; margin: 0 0 12px; }
+      .timer { font-size: 28px; font-weight: 700; margin: 8px 0 12px; }
+      .controls { display:flex; gap: 8px; margin-bottom: 12px; }
+      textarea#diary { width: 100%; min-height: 320px; padding: 16px; font-size: 16px; line-height: 1.7; box-sizing: border-box; }
+      button { padding: 10px 14px; font-size: 14px; }
+      .hidden { display: none; }
+      .out { margin-top: 18px; }
+      .out h3 { margin: 18px 0 6px; }
+      textarea.output, pre.output { width: 100%; background: #0c0c0c; color: #e5ffe5; padding: 12px; border-radius: 6px; box-sizing: border-box; }
+      textarea.output { min-height: 120px; white-space: pre-wrap; }
+      .small { color: #666; font-size: .9em; }
+      a { color: #06c; }
+    </style>
+  </head>
+  <body>
+    <h1>Picture Diary</h1>
+    <p class="note">文章だけを書いてください。音楽（Suno用）と画像の依頼は、あなたの文章から自動で提案します。25分タイマーで集中できます。</p>
+
+    <div class="timer" id="timer">25:00</div>
+    <div class="controls">
+      <button id="startPause">開始</button>
+      <button id="reset">リセット</button>
+      <button id="generate">今すぐ生成</button>
+    </div>
+
+    <textarea id="diary" placeholder="ここに自由に書いてください。"></textarea>
+
+    <section id="outputs" class="out hidden">
+      <h3>会話開始用まとめプロンプト</h3>
+      <textarea id="chatOut" class="output" readonly></textarea>
+      <button data-copy="chatOut">コピー</button>
+
+      <h3>音楽依頼（Suno 向け）</h3>
+      <textarea id="sunoOut" class="output" readonly></textarea>
+      <button data-copy="sunoOut">コピー</button>
+
+      <h3>画像依頼</h3>
+      <textarea id="imageOut" class="output" readonly></textarea>
+      <button data-copy="imageOut">コピー</button>
+
+      <p class="small">他のページ: <a href="./v2/index.html">v2</a></p>
+    </section>
+
+    <script>
+      const el = (id) => document.getElementById(id);
+      const fmt = (s) => String(s).padStart(2, '0');
+      const summary = (t) => { t=(t||'').trim(); return t.length>140 ? t.slice(0,140)+'…' : t; };
+
+      // Pomodoro 25:00 timer
+      let duration = 25 * 60;
+      let remaining = duration;
+      let timerId = null;
+      let hasStarted = false;
+      function renderTimer(){ el('timer').textContent = `${fmt(Math.floor(remaining/60))}:${fmt(remaining%60)}`; }
+      function beep(){
+        try {
+          const ctx = new (window.AudioContext || window.webkitAudioContext)();
+          const o = ctx.createOscillator();
+          const g = ctx.createGain();
+          o.type = 'sine'; o.frequency.value = 880; o.connect(g); g.connect(ctx.destination);
+          g.gain.setValueAtTime(0.001, ctx.currentTime); g.gain.exponentialRampToValueAtTime(0.1, ctx.currentTime+0.01);
+          o.start(); setTimeout(()=>{ o.stop(); ctx.close(); }, 500);
+        } catch(e) {}
+      }
+      function start(){
+        if(timerId) return;
+        timerId = setInterval(()=>{
+          remaining--;
+          if(remaining<=0){
+            clearInterval(timerId); timerId=null; remaining=0; renderTimer(); beep(); generate();
+          } else { renderTimer(); }
+        }, 1000);
+        hasStarted = true;
+        el('startPause').textContent='一時停止';
+      }
+      function pause(){ if(!timerId) return; clearInterval(timerId); timerId=null; el('startPause').textContent='再開'; }
+      function reset(){ pause(); remaining=duration; renderTimer(); hasStarted = false; el('startPause').textContent='開始'; }
+      el('startPause').addEventListener('click', ()=>{ timerId ? pause() : start(); });
+      el('reset').addEventListener('click', reset);
+      el('generate').addEventListener('click', generate);
+      renderTimer();
+      // 自動開始: 入力開始でタイマーを開始（初回のみ）
+      el('diary').addEventListener('input', ()=>{
+        if(!hasStarted && !timerId && remaining === duration){ start(); }
+      });
+
+      // Infer music/image from text
+      function inferMusic(text){
+        const t = text || '';
+        const has = (kw) => kw.some(k => t.includes(k));
+        if (has(['夜','ネオン','都会','雨','ビル'])) return {style:'synthwave / citypop', bpm:112, instruments:['synth bass','retro drums','pads','electric piano']};
+        if (has(['自然','森','海','山','風','空','川','光'])) return {style:'ambient / organic', bpm:96, instruments:['acoustic guitar','piano','soft percussion','field recordings']};
+        if (has(['楽しい','嬉','ワクワク','陽気','笑'])) return {style:'upbeat pop / electronic', bpm:128, instruments:['drums','bass','synth lead','claps']};
+        if (has(['悲しい','寂','疲れ','静か','落ち着','雨'])) return {style:'lo-fi chill', bpm:80, instruments:['warm keys','vinyl noise','soft drums','sub bass']};
+        if (has(['疾走','焦り','緊張','駆け抜け'])) return {style:'drum & bass', bpm:172, instruments:['breakbeat drums','reese bass','pads']};
+        return {style:'lo-fi chillhop', bpm:82, instruments:['warm keys','soft drums','bass']};
+      }
+
+      function inferImage(text){
+        const t = text || '';
+        if (['夜','ネオン','都会'].some(k=>t.includes(k))) return {style:'cinematic night, neon lights, high contrast', subject:'夜の街並み'};
+        if (['自然','森','海','山','空','風','光'].some(k=>t.includes(k))) return {style:'pastel watercolor, soft light, atmospheric', subject:'自然の情景'};
+        if (['楽しい','嬉','ワクワク','陽気'].some(k=>t.includes(k))) return {style:'colorful illustration, playful, clean', subject:'明るい日常の一場面'};
+        if (['悲しい','寂','静か','落ち着'].some(k=>t.includes(k))) return {style:'moody film still, shallow depth of field', subject:'静かな部屋の一角'};
+        return {style:'minimal, soft light, clean composition', subject:'印象的な日常の瞬間'};
+      }
+
+      function generate(){
+        const text = el('diary').value || '';
+        const s = summary(text);
+        const m = inferMusic(text);
+        const img = inferImage(text);
+
+        const chatSeed = [
+          'あなたはライティングの相棒です。以下の文章を材料に、短い要約と内省を返し、その内容に最も合う音楽と画像の方向性を日本語で提案してください。',
+          '',
+          `入力: ${s || '(なし)'}`,
+          '',
+          '要件:',
+          '- 要約は3文以内。',
+          '- 音楽は Suno で実現できる具体的なスタイル/BPM/編成の提案。',
+          '- 画像はシーンとスタイルの提案（1行の依頼文も）。',
+          '- 以後の会話で微調整しながら完成させる。'
+        ].join('\n');
+
+        const sunoPrompt = [
+          'Suno への依頼（貼り付け用）:',
+          `- スタイル: ${m.style}`,
+          `- BPM: ${m.bpm}`,
+          `- 編成: ${m.instruments.join(', ')}`,
+          '- 構成: Intro(8) → Verse(16) → Chorus(16) → Bridge(8) → Chorus(16) → Outro(8)',
+          `- キーワード: ${s}`,
+          '例: 雰囲気に合う短い日本語のボーカルフレーズを挿入（任意）。'
+        ].join('\n');
+
+        const imagePrompt = [
+          '画像生成 依頼文（貼り付け用）:',
+          `- シーン: ${img.subject}（文章の要約に基づく）`,
+          `- スタイル: ${img.style}`,
+          `- テキスト要約: ${s}`,
+          '1行プロンプト: ',
+          `${img.subject}, ${img.style}, high detail, soft light, 16:9`
+        ].join('\n');
+
+        el('chatOut').value = chatSeed;
+        el('sunoOut').value = sunoPrompt;
+        el('imageOut').value = imagePrompt;
+        el('outputs').classList.remove('hidden');
+
+        try { localStorage.setItem('pd_text', text); } catch(e) {}
+      }
+
+      // Restore last text
+      (function(){ try { const t = localStorage.getItem('pd_text'); if(t) el('diary').value = t; } catch(e) {} })();
+
+      // Copy buttons
+      document.querySelectorAll('[data-copy]').forEach(btn => btn.addEventListener('click', async (e)=>{
+        const id = e.currentTarget.getAttribute('data-copy');
+        const v = el(id).value || '';
+        try { await navigator.clipboard.writeText(v); alert('コピーしました'); } catch(err){
+          el(id).select(); document.execCommand('copy'); alert('コピーしました');
+        }
+      }));
+    </script>
+  </body>
+  </html>
