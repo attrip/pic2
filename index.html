@@ -74,6 +74,9 @@
         <button id="music">音楽依頼</button>
         <button id="rap">ラップ作成</button>
         <button id="image">画像依頼</button>
+        <button id="tagMusic">＋音楽タグ</button>
+        <button id="tagRap">＋ラップタグ</button>
+        <button id="tagImage">＋画像タグ</button>
       </div>
 
       <!-- チャットUIは削除 -->
@@ -312,6 +315,25 @@
       el('music').addEventListener('click', generateMusicOnly);
       el('rap').addEventListener('click', generateRap);
       el('image').addEventListener('click', generateImageOnly);
+
+      // タグ挿入（本文に簡単な依頼フレーズを付加）
+      function insertAtCursor(text){
+        const t = plainEl.value || '';
+        const start = plainEl.selectionStart ?? t.length;
+        const end = plainEl.selectionEnd ?? start;
+        const before = t.slice(0, end);
+        const after = t.slice(end);
+        const ins = (before && !/\s$/.test(before) ? ' ' : '') + text + ' ';
+        plainEl.value = before + ins + after;
+        const caret = (before + ins).length;
+        plainEl.setSelectionRange(caret, caret);
+        plainEl.focus();
+        updateCounts();
+        showToast('タグを挿入しました');
+      }
+      el('tagMusic').addEventListener('click', ()=> insertAtCursor('[音楽依頼] この部分の雰囲気でSuno向けの曲案を提案して'));
+      el('tagRap').addEventListener('click', ()=> insertAtCursor('[ラップ依頼] このテーマで16小節の日本語ラップを書いて'));
+      el('tagImage').addEventListener('click', ()=> insertAtCursor('[画像依頼] この情景を画像生成向けに1行プロンプト化して'));
       // チャットの取り消しショートカットは廃止
       // UI chrome toggle: Esc または 右上ボタン
       function setZen(on){ document.body.classList.toggle('zen', !!on); }
