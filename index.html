@@ -263,12 +263,52 @@
       function inferMusic(text){
         const t = text || '';
         const has = (kw) => kw.some(k => t.includes(k));
-        if (has(['夜','ネオン','都会','雨','ビル'])) return {style:'synthwave / citypop', bpm:112, instruments:['synth bass','retro drums','pads','electric piano']};
-        if (has(['自然','森','海','山','風','空','川','光'])) return {style:'ambient / organic', bpm:96, instruments:['acoustic guitar','piano','soft percussion','field recordings']};
-        if (has(['楽しい','嬉','ワクワク','陽気','笑'])) return {style:'upbeat pop / electronic', bpm:128, instruments:['drums','bass','synth lead','claps']};
-        if (has(['悲しい','寂','疲れ','静か','落ち着','雨'])) return {style:'lo-fi chill', bpm:80, instruments:['warm keys','vinyl noise','soft drums','sub bass']};
-        if (has(['疾走','焦り','緊張','駆け抜け'])) return {style:'drum & bass', bpm:172, instruments:['breakbeat drums','reese bass','pads']};
-        return {style:'lo-fi chillhop', bpm:82, instruments:['warm keys','soft drums','bass']};
+        if (has(['夜','ネオン','都会','雨','ビル'])) {
+          return {
+            style:'synthwave / citypop',
+            bpm:112,
+            instruments:['synth bass','retro drums','pads','electric piano'],
+            mood:'都会の夜景が滲むクールで艶やかな音楽性'
+          };
+        }
+        if (has(['自然','森','海','山','風','空','川','光'])) {
+          return {
+            style:'ambient / organic',
+            bpm:96,
+            instruments:['acoustic guitar','piano','soft percussion','field recordings'],
+            mood:'自然の息遣いと柔らかな余韻を感じる音楽性'
+          };
+        }
+        if (has(['楽しい','嬉','ワクワク','陽気','笑'])) {
+          return {
+            style:'upbeat pop / electronic',
+            bpm:128,
+            instruments:['drums','bass','synth lead','claps'],
+            mood:'高揚感と明るさがはじけるダンサブルな音楽性'
+          };
+        }
+        if (has(['悲しい','寂','疲れ','静か','落ち着','雨'])) {
+          return {
+            style:'lo-fi chill',
+            bpm:80,
+            instruments:['warm keys','vinyl noise','soft drums','sub bass'],
+            mood:'静かな哀愁と内省を帯びた温かな音楽性'
+          };
+        }
+        if (has(['疾走','焦り','緊張','駆け抜け'])) {
+          return {
+            style:'drum & bass',
+            bpm:172,
+            instruments:['breakbeat drums','reese bass','pads'],
+            mood:'緊迫感と疾走感で駆け抜ける攻めの音楽性'
+          };
+        }
+        return {
+          style:'lo-fi chillhop',
+          bpm:82,
+          instruments:['warm keys','soft drums','bass'],
+          mood:'落ち着いた内省で心拍を整える柔らかな音楽性'
+        };
       }
 
       function inferImage(text){
@@ -312,8 +352,8 @@
           '【出力要件】',
           '- 要約（1〜3文）',
           '- 内省（1〜3文）',
-          `- 音楽の提案（例: スタイル=${m.style}, BPM=${m.bpm}, 編成=${m.instruments.join(', ')})`,
-          '- Sunoに貼れる依頼文（1〜5行、先頭に［STYLE:〜］［BPM:〜］［INSTRUMENTS:〜］形式で音楽性を明記）',
+          `- 音楽の提案（例: 音楽性=${m.mood}, スタイル=${m.style}, BPM=${m.bpm}, 編成=${m.instruments.join(', ')})`,
+          '- Sunoに貼れる依頼文（1〜5行、先頭に［STYLE:〜］［MOOD:〜］［BPM:〜］［INSTRUMENTS:〜］形式で音楽性を明記）',
           `- 画像の提案（例: シーン=${img.subject}, スタイル=${img.style})`,
           '- 画像生成向けの1行プロンプト',
           '- 以後はこの結果を起点に日本語で会話しながら調整する',
@@ -373,10 +413,11 @@
         const m = inferMusic(text);
         const seed = [
           'Suno への依頼（貼り付け用）:',
-          `［STYLE:${m.style}］［BPM:${m.bpm}］［INSTRUMENTS:${m.instruments.join('・') || '任意'}］`,
+          `［STYLE:${m.style}］［MOOD:${m.mood}］［BPM:${m.bpm}］［INSTRUMENTS:${m.instruments.join('・') || '任意'}］`,
           `- スタイル: ${m.style}`,
           `- BPM: ${m.bpm}`,
           `- 編成: ${m.instruments.join(', ') || '(任意)'}`,
+          `- 音楽性（雰囲気）: ${m.mood}`,
           '- 構成: Intro(8) → Verse(16) → Chorus(16) → Bridge(8) → Chorus(16) → Outro(8)',
           `- キーワード: ${s}`,
           '雰囲気に合う短い日本語のボーカルフレーズを入れてください（任意）。',
@@ -392,18 +433,20 @@
         const m = inferMusic(text);
         const style = (m.style.includes('trap') || m.bpm >= 130) ? 'modern trap' : 'boom bap / lo-fi';
         const tempo = m.bpm >= 120 ? '速め' : (m.bpm >= 90 ? '中庸' : '遅め');
+        const mood = m.mood || '柔らかな音楽性';
         const seed = [
           'ラップ作成依頼（貼り付け用）:',
           `- テーマ: ${s}`,
           `- ベースとなる音楽スタイル: ${style}（目安。素材に合うなら変更してOK）`,
           `- テンポ感: ${tempo}`,
+          `- 音楽性・雰囲気: ${mood}`,
           '',
           '【素材（全文）】',
           full || '(なし)',
           '',
           '【重要】テンプレ化せず、入力テキストの語彙・固有名詞・トーン・リズム感を最大限反映してください。比喩や言い回しも素材に寄せること。',
           '構成: 素材に最適な構成をあなたが提案（例: Intro/Verse/Hook/Bridge…）。定型から外れてOK。各セクション名は明記。',
-          `Suno共有: 本文冒頭に［STYLE:${style}］［BPM:${m.bpm}］［INSTRUMENTS:${m.instruments.join('・')}］の角括弧タグを入れて音楽性を伝えること。`,
+          `Suno共有: 本文冒頭に［STYLE:${style}］［MOOD:${mood}］［BPM:${m.bpm}］［INSTRUMENTS:${m.instruments.join('・')}］の角括弧タグを入れて音楽性を伝えること。`,
           '条件: 日本語。内部韻/脚韻は素材の語彙で多めに。フローは自然で、行間で抑揚が出るように。卑語は使わない。',
           '美しさ: 半角の数字や箇条書き記号を本文に使わない。必要なら漢数字や言葉で表す。視覚的に詩として美しく。',
           '出力: 見出し＋本文の歌詞のみ（説明や注釈は書かない）。最後は「テーマの要諦」を印象的に締める。',
