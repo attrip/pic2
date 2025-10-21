@@ -22,6 +22,7 @@
       button { padding: 10px 14px; font-size: 14px; border: 0; border-radius: 8px; background: #eff7f5; color: #135; cursor: pointer; }
       button:hover { filter: brightness(0.98); }
       button:active { transform: translateY(1px); }
+      button.listening { background: #ffe9e3; color: #a2353a; }
       /* チャット関連は廃止 */
       .plain { margin-top: 12px; }
       .plain textarea { width: 100%; min-height: 360px; padding: 18px 18px 28px; font-size: 18px; line-height: 1.85; box-sizing: border-box; border-radius: 14px; border: 1px solid #e8e2da; background: var(--surface); box-shadow: var(--shadow); }
@@ -30,7 +31,7 @@
       .hidden { display: none; }
       .out { margin-top: 22px; }
       .out h3 { margin: 18px 0 8px; }
-      textarea.output { width: 100%; background: #0c0c0c; color: #e5ffe5; padding: 14px; border-radius: 10px; box-sizing: border-box; min-height: 120px; white-space: pre-wrap; }
+      textarea.output { width: 100%; background: #0c0c0c; color: #e5ffe5; padding: 14px; border-radius: 10px; box-sizing: border-box; min-height: 120px; white-space: pre-wrap; height: auto; overflow: auto; }
       .small { color: var(--muted); font-size: .9em; }
       a { color: #06c; text-decoration: none; }
       a:hover { text-decoration: underline; }
@@ -77,6 +78,7 @@
         <button id="tagMusic">＋音楽タグ</button>
         <button id="tagRap">＋ラップタグ</button>
         <button id="tagImage">＋画像タグ</button>
+        <button id="voice">音声入力</button>
       </div>
 
       <!-- チャットUIは削除 -->
@@ -91,8 +93,10 @@
       <section id="outputs" class="out hidden">
       <h3>ChatGPT へ渡す依頼文（まとめ）</h3>
       <textarea id="chatOut" class="output" readonly></textarea>
-      <div style="display:flex; gap:8px; margin-top:8px;">
+      <div style="display:flex; gap:8px; margin-top:8px; flex-wrap: wrap;">
         <button data-copy="chatOut">コピー</button>
+        <button id="openRaw">全量プレビュー</button>
+        <button id="saveTxt">.txt保存</button>
         <a href="https://chat.openai.com/" target="_blank" rel="noopener noreferrer"><button>ChatGPT を開く</button></a>
       </div>
       </section>
@@ -139,12 +143,121 @@
       // チャットラッパーなし
       const plainWrap = el('plainWrap');
       // ノート入力のみ利用（チャット機能は廃止）
+      // 入力のローカル保存/復元（セッションをまたいでも保持）
+      const voiceBtn = el('voice');
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      let recognition = null;
+      let voiceKeepAlive = false;
+      let voiceListening = false;
+
+      function setVoiceState(active){
+        voiceListening = !!active;
+        if (!voiceBtn) return;
+        voiceBtn.textContent = active ? '音声入力停止' : '音声入力';
+        voiceBtn.classList.toggle('listening', !!active);
+      }
+
+      function appendVoiceText(text){
+        if (!text) return;
+        const trimmed = text.trim();
+        if (!trimmed) return;
+        const needsBreak = plainEl.value && !plainEl.value.endsWith('\n');
+        plainEl.value += (needsBreak ? '\n' : '') + trimmed + '\n';
+        updateCounts();
+        queueSave();
+        if (!hasStarted && !timerId && remaining === duration) { start(); }
+        plainEl.focus();
+      }
+
+      if (SpeechRecognition && voiceBtn) {
+        recognition = new SpeechRecognition();
+        recognition.lang = 'ja-JP';
+        recognition.continuous = true;
+        recognition.interimResults = false;
+
+        recognition.addEventListener('result', (event)=>{
+          let transcript = '';
+          for (let i = event.resultIndex; i < event.results.length; i += 1) {
+            const res = event.results[i];
+            if (res.isFinal && res[0]) {
+              transcript += res[0].transcript;
+            }
+          }
+          appendVoiceText(transcript);
+        });
+
+        recognition.addEventListener('start', ()=>{
+          const wasActive = voiceListening;
+          setVoiceState(true);
+          if (!wasActive) { showToast('音声入力を開始しました'); }
+        });
+
+        recognition.addEventListener('end', ()=>{
+          if (voiceKeepAlive) {
+            try { recognition.start(); } catch(e) { voiceKeepAlive = false; setVoiceState(false); showToast('音声入力を再開できませんでした'); }
+          } else {
+            if (voiceListening) { showToast('音声入力を停止しました'); }
+            setVoiceState(false);
+          }
+        });
+
+        recognition.addEventListener('error', (event)=>{
+          voiceKeepAlive = false;
+          setVoiceState(false);
+          showToast(event.error === 'not-allowed' ? 'マイクへのアクセスを許可してください' : '音声入力エラーが発生しました');
+        });
+
+        voiceBtn.addEventListener('click', ()=>{
+          if (!recognition) return;
+          if (voiceListening || voiceKeepAlive) {
+            voiceKeepAlive = false;
+            try { recognition.stop(); } catch(e) { setVoiceState(false); }
+            return;
+          }
+          voiceKeepAlive = true;
+          try {
+            recognition.start();
+          } catch(e) {
+            voiceKeepAlive = false;
+            showToast('音声入力を開始できませんでした');
+          }
+        });
+      } else if (voiceBtn) {
+        voiceBtn.disabled = true;
+        voiceBtn.textContent = '音声入力非対応';
+        voiceBtn.title = 'ブラウザが音声入力に対応していません';
+      }
+      window.addEventListener('beforeunload', ()=>{ voiceKeepAlive = false; if (recognition && voiceListening) { try { recognition.stop(); } catch(e) {} } });
+      const STORAGE_KEY = 'pd_plain_v3';
+      function loadSaved(){
+        try {
+          const v = localStorage.getItem(STORAGE_KEY);
+          if (typeof v === 'string' && v.length > 0) {
+            plainEl.value = v;
+          }
+        } catch(e) {}
+      }
+      function saveNow(){
+        try {
+          localStorage.setItem(STORAGE_KEY, plainEl.value || '');
+          const s = el('save');
+          if (s) { s.textContent = '保存済み'; setTimeout(()=>{ s.textContent='\u00a0'; }, 1000); }
+        } catch(e) {}
+      }
+      let saveTimer = null;
+      function queueSave(){
+        try { if (saveTimer) clearTimeout(saveTimer); } catch(e) {}
+        saveTimer = setTimeout(saveNow, 400);
+      }
       function getAllText(){ return plainEl.value || ''; }
       function updateCounts(){ const t = getAllText(); const words=(t.trim().match(/\S+/g)||[]).length; el('wc').textContent=String(words); el('cc').textContent=String(t.length); }
-      // 前回の内容は復元しない（旧キーも削除）
-      try { localStorage.removeItem('pd_msgs'); localStorage.removeItem('pd_text'); } catch(e) {}
+      // 旧キーのクリアはしない（自動削除は事故の元）、必要なら新キーへ移行
+      // 起動時に保存内容を復元
+      loadSaved();
       // 入力開始でタイマー開始
-      plainEl.addEventListener('input', ()=>{ if(!hasStarted && !timerId && remaining===duration){ start(); } updateCounts(); });
+      plainEl.addEventListener('input', ()=>{ if(!hasStarted && !timerId && remaining===duration){ start(); } updateCounts(); queueSave(); });
+      // ページ離脱時も念のため保存
+      window.addEventListener('beforeunload', saveNow);
 
       // Infer music/image from text
       function inferMusic(text){
@@ -168,32 +281,39 @@
       }
 
       function currentText(){
-        // 選択範囲があれば優先し、なければ全文
-        const t = plainEl.value || '';
-        const start = plainEl.selectionStart ?? 0;
-        const end = plainEl.selectionEnd ?? 0;
-        if (end > start && (t.slice(start, end).trim().length > 0)) {
-          return t.slice(start, end);
-        }
-        return t;
+        // 常に全文を対象（選択中でも誤って一部だけにならないように）
+        return plainEl.value || '';
+      }
+
+      // 出力欄の自動リサイズ（省略されて見えない問題の体感改善）
+      function setOutput(value){
+        const out = el('chatOut');
+        out.value = value || '';
+        // Auto-resize to fit content
+        out.style.height = 'auto';
+        out.style.height = (out.scrollHeight + 4) + 'px';
       }
 
       function generate(){
         const text = currentText();
-        const s = summary(text);
+        const full = (text || '');
         const m = inferMusic(text);
         const img = inferImage(text);
 
+        const inputLen = full.length;
         const chatSeed = [
           'あなたは私の相棒です。以下の文章を材料に、短い要約と内省（各1〜3文）を返し、その内容に最も合う音楽（Sunoで実現可能）と画像の方向性を日本語で具体提案してください。',
           '',
-          `【入力】\n${s || '(なし)'}`,
+          `【入力（全文） ${inputLen}字】`,
+          '```',
+          full || '(なし)',
+          '```',
           '',
           '【出力要件】',
           '- 要約（1〜3文）',
           '- 内省（1〜3文）',
           `- 音楽の提案（例: スタイル=${m.style}, BPM=${m.bpm}, 編成=${m.instruments.join(', ')})`,
-          '- Sunoに貼れる依頼文（1〜5行）',
+          '- Sunoに貼れる依頼文（1〜5行、先頭に［STYLE:〜］［BPM:〜］［INSTRUMENTS:〜］形式で音楽性を明記）',
           `- 画像の提案（例: シーン=${img.subject}, スタイル=${img.style})`,
           '- 画像生成向けの1行プロンプト',
           '- 以後はこの結果を起点に日本語で会話しながら調整する',
@@ -206,7 +326,7 @@
           '- スライド構成案（8〜12枚）を番号付きで: 各スライドは「タイトル」「一文本文」「補足（任意）」の形式',
         ].join('\n');
 
-        el('chatOut').value = chatSeed;
+        setOutput(chatSeed);
         el('outputs').classList.remove('hidden');
       }
 
@@ -224,17 +344,18 @@
           '- 具体化ポイント（例や数字の入れ所）',
           '- 次に書くべき1〜3ステップ（チェックリスト）',
         ].join('\n');
-        el('chatOut').value = chatSeed;
+        setOutput(chatSeed);
         el('outputs').classList.remove('hidden');
       }
 
       function generatePresentation(){
         const text = currentText();
-        const s = summary(text);
+        const full = (text || '');
         const chatSeed = [
           '【プレゼン支援】以下の材料から、短時間で形にできるプレゼン案を作ってください。',
           '',
-          `【材料】\n${s || '(なし)'}`,
+          '【材料（全文）】',
+          full || '(なし)',
           '',
           '【出力】',
           '- 目的（1文）',
@@ -242,7 +363,7 @@
           '- スライド構成案（8〜10枚、各: タイトル/一文/補足）',
           '- 最後に「相手にどう動いてほしいか」を再強調',
         ].join('\n');
-        el('chatOut').value = chatSeed;
+        setOutput(chatSeed);
         el('outputs').classList.remove('hidden');
       }
 
@@ -252,6 +373,7 @@
         const m = inferMusic(text);
         const seed = [
           'Suno への依頼（貼り付け用）:',
+          `［STYLE:${m.style}］［BPM:${m.bpm}］［INSTRUMENTS:${m.instruments.join('・') || '任意'}］`,
           `- スタイル: ${m.style}`,
           `- BPM: ${m.bpm}`,
           `- 編成: ${m.instruments.join(', ') || '(任意)'}`,
@@ -259,25 +381,34 @@
           `- キーワード: ${s}`,
           '雰囲気に合う短い日本語のボーカルフレーズを入れてください（任意）。',
         ].join('\n');
-        el('chatOut').value = seed;
+        setOutput(seed);
         el('outputs').classList.remove('hidden');
       }
 
       function generateRap(){
         const text = currentText();
+        const full = (text || '');
         const s = summary(text);
         const m = inferMusic(text);
         const style = (m.style.includes('trap') || m.bpm >= 130) ? 'modern trap' : 'boom bap / lo-fi';
+        const tempo = m.bpm >= 120 ? '速め' : (m.bpm >= 90 ? '中庸' : '遅め');
         const seed = [
           'ラップ作成依頼（貼り付け用）:',
           `- テーマ: ${s}`,
-          `- スタイル: ${style}`,
-          `- BPM目安: ${m.bpm}`,
-          '- 構成: Intro(4) → Verse(16) → Hook(8) → Verse(16) → Hook(8) → Outro(4)',
-          '- 条件: 日本語。内部韻/脚韻を適度に。フローは自然に。卑語NG。',
-          '- 出力: セクション見出しを付け、歌いやすい行単位で。',
+          `- ベースとなる音楽スタイル: ${style}（目安。素材に合うなら変更してOK）`,
+          `- テンポ感: ${tempo}`,
+          '',
+          '【素材（全文）】',
+          full || '(なし)',
+          '',
+          '【重要】テンプレ化せず、入力テキストの語彙・固有名詞・トーン・リズム感を最大限反映してください。比喩や言い回しも素材に寄せること。',
+          '構成: 素材に最適な構成をあなたが提案（例: Intro/Verse/Hook/Bridge…）。定型から外れてOK。各セクション名は明記。',
+          `Suno共有: 本文冒頭に［STYLE:${style}］［BPM:${m.bpm}］［INSTRUMENTS:${m.instruments.join('・')}］の角括弧タグを入れて音楽性を伝えること。`,
+          '条件: 日本語。内部韻/脚韻は素材の語彙で多めに。フローは自然で、行間で抑揚が出るように。卑語は使わない。',
+          '美しさ: 半角の数字や箇条書き記号を本文に使わない。必要なら漢数字や言葉で表す。視覚的に詩として美しく。',
+          '出力: 見出し＋本文の歌詞のみ（説明や注釈は書かない）。最後は「テーマの要諦」を印象的に締める。',
         ].join('\n');
-        el('chatOut').value = seed;
+        setOutput(seed);
         el('outputs').classList.remove('hidden');
       }
 
@@ -293,7 +424,7 @@
           '1行プロンプト:',
           `${img.subject}, ${img.style}, high detail, soft light, 16:9`,
         ].join('\n');
-        el('chatOut').value = seed;
+        setOutput(seed);
         el('outputs').classList.remove('hidden');
       }
 
@@ -305,6 +436,28 @@
           el(id).select(); document.execCommand('copy'); showToast('コピーしました');
         }
       }));
+      // Open raw preview in new tab
+      el('openRaw').addEventListener('click', ()=>{
+        const v = (el('chatOut').value || '');
+        const w = window.open('', '_blank');
+        if (!w) { showToast('ポップアップがブロックされました'); return; }
+        const esc = (s)=> s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        w.document.write(`<!doctype html><meta charset="utf-8"><pre style="white-space:pre-wrap;word-wrap:break-word;">${esc(v)}</pre>`);
+        w.document.close();
+      });
+      // Download as .txt
+      el('saveTxt').addEventListener('click', ()=>{
+        const v = (el('chatOut').value || '');
+        const blob = new Blob([v], {type:'text/plain;charset=utf-8'});
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'chat-seed.txt';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(()=> URL.revokeObjectURL(url), 500);
+      });
       // Shortcut: ⌘/Ctrl + Enter で生成
       window.addEventListener('keydown', (ev)=>{
         if ((ev.metaKey || ev.ctrlKey) && ev.key.toLowerCase() === 'enter') { ev.preventDefault(); generate(); }
@@ -342,11 +495,11 @@
       function newSession(){
         plainEl.value = '';
         updateCounts();
+        try { localStorage.removeItem(STORAGE_KEY); } catch(e) {}
         // hide outputs and clear
         el('chatOut').value = '';
         el('outputs').classList.add('hidden');
-        // clear any stored legacy keys
-        try { localStorage.removeItem('pd_msgs'); localStorage.removeItem('pd_text'); } catch(e) {}
+        // 旧キーは触らない（ユーザの他用途を尊重）
         // reset timer
         pause(); remaining = duration; hasStarted = false; renderTimer(); el('startPause').textContent='開始';
         showToast('新規セッションを開始しました');
@@ -355,7 +508,7 @@
       window.addEventListener('keydown', (ev)=>{
         if (ev.key === 'Escape') { document.body.classList.toggle('zen'); }
       });
-      setZen(true);
+      setZen(false);
       plainEl.focus();
 
       // Toast utility
