@@ -19,14 +19,6 @@
       .progress { height: 6px; background: #e9e5df; border-radius: 999px; overflow: hidden; box-shadow: inset 0 1px 0 rgba(0,0,0,.03); }
       .bar { height: 100%; width: 100%; background: linear-gradient(90deg, #7dd, #4b9); transition: width .3s ease; }
       .controls { display:flex; gap: 8px; margin: 10px 0 12px; flex-wrap: wrap; }
-      .musicTuner { display: flex; flex-direction: column; gap: 6px; background: #f4faf6; border: 1px solid #d7ede3; border-radius: 12px; padding: 12px 14px; margin: 0 0 12px; }
-      .musicTuner label { font-size: 13px; font-weight: 600; color: #2b5; display: inline-flex; align-items: center; gap: 6px; }
-      .musicTuner select { padding: 8px 10px; border-radius: 8px; border: 1px solid #c8e3d7; font-size: 14px; background: #fff; color: #134; }
-      .musicSummary { font-size: 13px; color: var(--muted); line-height: 1.5; }
-      .musicSummary strong { color: #135; }
-      .musicActions { display: flex; gap: 8px; flex-wrap: wrap; }
-      .musicActions button { background: #e4f3eb; color: #124; padding: 8px 12px; font-size: 13px; }
-      .musicActions button.primary { background: #cdeee0; font-weight: 600; }
       button { padding: 10px 14px; font-size: 14px; border: 0; border-radius: 8px; background: #eff7f5; color: #135; cursor: pointer; }
       button:hover { filter: brightness(0.98); }
       button:active { transform: translateY(1px); }
@@ -89,22 +81,6 @@
         <button id="voice">音声入力</button>
       </div>
       <p class="small" id="voiceNotice">音声入力はデスクトップ版 Chrome / Edge でのみ動作します。Atlas や Safari などでは利用できません。</p>
-      <div class="musicTuner" id="musicTuner">
-        <label for="musicPreset">音楽性プレビュー</label>
-        <select id="musicPreset">
-          <option value="">自動判定（推奨）</option>
-        </select>
-        <div class="musicSummary">
-          <div id="musicOrigin">選択: 自動</div>
-          <div id="musicSummary">自動推定中...</div>
-          <div id="musicSuggestion" class="hidden">自動提案との差分を計算中...</div>
-        </div>
-        <div class="musicActions">
-          <button id="musicFeedbackGood" type="button" class="primary">この曲調でOK</button>
-          <button id="musicFeedbackBad" type="button">違和感あり</button>
-        </div>
-      </div>
-
       <!-- チャットUIは削除 -->
       <div id="plainWrap" class="plain">
         <textarea id="plainInput" placeholder="ここに自由に書いてください（⌘/Ctrl + Enter で生成）"></textarea>
@@ -343,7 +319,6 @@
         if(!hasStarted && !timerId && remaining===duration){ start(); }
         updateCounts();
         queueSave();
-        scheduleMusicRefresh();
       });
       // ページ離脱時も念のため保存
       window.addEventListener('beforeunload', saveNow);
@@ -504,20 +479,6 @@
           baseScore:1
         }
       ];
-      const MUSIC_PROFILE_MAP = MUSIC_PROFILES.reduce((acc, profile)=>{ acc[profile.id] = profile; return acc; }, {});
-      const MUSIC_MANUAL_KEY = 'pd_music_manual_v1';
-      const MUSIC_FEEDBACK_KEY = 'pd_music_feedback_v1';
-      let manualMusicId = null;
-      let lastAutoMusic = MUSIC_PROFILES[MUSIC_PROFILES.length - 1];
-      let lastResolvedMusic = MUSIC_PROFILES[MUSIC_PROFILES.length - 1];
-      const musicPresetEl = el('musicPreset');
-      const musicOriginEl = el('musicOrigin');
-      const musicSummaryEl = el('musicSummary');
-      const musicSuggestionEl = el('musicSuggestion');
-      const musicGoodEl = el('musicFeedbackGood');
-      const musicBadEl = el('musicFeedbackBad');
-      let musicRefreshTimer = null;
-
       function normalizeMusicText(text){
         const raw = text || '';
         const lower = raw.toLowerCase();
@@ -575,134 +536,7 @@
             best = profile;
           }
         });
-        lastAutoMusic = {...best};
-        return {...best};
-      }
-
-      function resolveMusic(text){
-        const auto = inferMusic(text);
-        if (manualMusicId && MUSIC_PROFILE_MAP[manualMusicId]) {
-          const manual = MUSIC_PROFILE_MAP[manualMusicId];
-          lastResolvedMusic = {...manual, origin:'manual', suggested:auto};
-          return lastResolvedMusic;
-        }
-        lastResolvedMusic = {...auto, origin:'auto'};
-        return lastResolvedMusic;
-      }
-
-      function populateMusicPreset(){
-        if (!musicPresetEl) return;
-        while (musicPresetEl.options.length > 1) {
-          musicPresetEl.remove(1);
-        }
-        MUSIC_PROFILES.forEach(profile=>{
-          const opt = document.createElement('option');
-          opt.value = profile.id;
-          opt.textContent = `${profile.label} ／ ${profile.mood}`;
-          musicPresetEl.appendChild(opt);
-        });
-      }
-
-      function updateMusicUI(music){
-        if (musicOriginEl) {
-          musicOriginEl.textContent = `選択: ${music.origin === 'manual' ? '手動' : '自動'}`;
-        }
-        if (musicSummaryEl) {
-          musicSummaryEl.innerHTML = `<strong>${music.mood}</strong><br>Style: ${music.style}／BPM: ${music.bpm}／編成: ${music.instruments.join(', ')}`;
-        }
-        if (musicSuggestionEl) {
-          if (music.origin === 'manual' && music.suggested) {
-            musicSuggestionEl.classList.remove('hidden');
-            musicSuggestionEl.textContent = `自動提案: ${music.suggested.label}（${music.suggested.mood}／BPM ${music.suggested.bpm}）`;
-          } else {
-            musicSuggestionEl.classList.add('hidden');
-            musicSuggestionEl.textContent = '';
-          }
-        }
-        if (musicPresetEl) {
-          if (music.origin === 'manual' && manualMusicId) {
-            musicPresetEl.value = manualMusicId;
-          } else {
-            musicPresetEl.value = '';
-          }
-        }
-      }
-
-      function setManualMusic(id, silent){
-        manualMusicId = id || null;
-        try {
-          if (manualMusicId) {
-            localStorage.setItem(MUSIC_MANUAL_KEY, manualMusicId);
-          } else {
-            localStorage.removeItem(MUSIC_MANUAL_KEY);
-          }
-        } catch(e) {}
-        const resolved = resolveMusic(currentText());
-        updateMusicUI(resolved);
-        if (!silent) {
-          showToast(manualMusicId ? '音楽性を手動設定しました' : '音楽性を自動判定に戻しました');
-        }
-      }
-
-      function loadManualMusic(){
-        try {
-          const stored = localStorage.getItem(MUSIC_MANUAL_KEY);
-          if (stored && MUSIC_PROFILE_MAP[stored]) {
-            manualMusicId = stored;
-            if (musicPresetEl) musicPresetEl.value = stored;
-          }
-        } catch(e) {}
-      }
-
-      function recordMusicFeedback(result){
-        if (!lastResolvedMusic) return;
-        const payload = {
-          id: lastResolvedMusic.id,
-          label: lastResolvedMusic.label,
-          mood: lastResolvedMusic.mood,
-          bpm: lastResolvedMusic.bpm,
-          type: result,
-          timestamp: Date.now()
-        };
-        try {
-          const current = JSON.parse(localStorage.getItem(MUSIC_FEEDBACK_KEY) || '[]');
-          current.unshift(payload);
-          const trimmed = current.slice(0, 20);
-          localStorage.setItem(MUSIC_FEEDBACK_KEY, JSON.stringify(trimmed));
-        } catch(e) {}
-      }
-
-      function refreshMusicImmediate(){
-        const resolved = resolveMusic(currentText());
-        updateMusicUI(resolved);
-      }
-
-      function scheduleMusicRefresh(){
-        try { if (musicRefreshTimer) clearTimeout(musicRefreshTimer); } catch(e) {}
-        musicRefreshTimer = setTimeout(refreshMusicImmediate, 250);
-      }
-
-      populateMusicPreset();
-      loadManualMusic();
-      refreshMusicImmediate();
-      if (musicPresetEl) {
-        musicPresetEl.addEventListener('change', (event)=>{
-          const value = event.target.value;
-          setManualMusic(value || null, false);
-        });
-      }
-      if (musicGoodEl) {
-        musicGoodEl.addEventListener('click', ()=>{
-          recordMusicFeedback('fit');
-          showToast('了解しました。この曲調で進めます。');
-        });
-      }
-      if (musicBadEl) {
-        musicBadEl.addEventListener('click', ()=>{
-          recordMusicFeedback('miss');
-          showToast('曲調メモを残しました。必要なら別のプリセットを選んでください。');
-          if (musicPresetEl) { musicPresetEl.focus(); }
-        });
+        return {...best, origin:'auto'};
       }
 
       function inferImage(text){
@@ -731,8 +565,7 @@
       function generate(){
         const text = currentText();
         const full = (text || '');
-        const m = resolveMusic(text);
-        updateMusicUI(m);
+        const m = inferMusic(text);
         const img = inferImage(text);
 
         const inputLen = full.length;
@@ -805,8 +638,7 @@
       function generateMusicOnly(){
         const text = currentText();
         const s = summary(text);
-        const m = resolveMusic(text);
-        updateMusicUI(m);
+        const m = inferMusic(text);
         const seed = [
           'Suno への依頼（貼り付け用）:',
           `［STYLE:${m.style}］［MOOD:${m.mood}］［BPM:${m.bpm}］［INSTRUMENTS:${m.instruments.join('・') || '任意'}］`,
@@ -826,8 +658,7 @@
         const text = currentText();
         const full = (text || '');
         const s = summary(text);
-        const m = resolveMusic(text);
-        updateMusicUI(m);
+        const m = inferMusic(text);
         const style = (m.style.includes('trap') || m.bpm >= 130) ? 'modern trap' : 'boom bap / lo-fi';
         const tempo = m.bpm >= 120 ? '速め' : (m.bpm >= 90 ? '中庸' : '遅め');
         const mood = m.mood || '柔らかな音楽性';
@@ -923,7 +754,6 @@
         plainEl.setSelectionRange(caret, caret);
         plainEl.focus();
         updateCounts();
-        scheduleMusicRefresh();
         showToast('タグを挿入しました');
       }
       el('tagMusic').addEventListener('click', ()=> insertAtCursor('[音楽依頼] この部分の雰囲気でSuno向けの曲案を提案して'));
@@ -937,7 +767,6 @@
       function newSession(){
         plainEl.value = '';
         updateCounts();
-        scheduleMusicRefresh();
         try { localStorage.removeItem(STORAGE_KEY); } catch(e) {}
         // hide outputs and clear
         el('chatOut').value = '';
