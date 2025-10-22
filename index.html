@@ -174,6 +174,14 @@
       let voiceListening = false;
       let micReady = false;
       let micDenied = false;
+      const fatalSpeechErrors = ['not-allowed','service-not-allowed','audio-capture','network'];
+      const speechErrorMessages = {
+        'not-allowed':'マイクへのアクセスを許可してください',
+        'service-not-allowed':'マイクへのアクセスを許可してください',
+        'no-speech':'音声が検出されませんでした',
+        'audio-capture':'マイクが検出できませんでした',
+        'network':'音声認識サービスに接続できませんでした',
+      };
 
       function disableVoiceButton(text, tooltip, toastMessage){
         if (!voiceBtn) return;
@@ -247,16 +255,9 @@
         recognition.addEventListener('error', (event)=>{
           voiceKeepAlive = false;
           setVoiceState(false);
-          const detail =
-            event.error === 'not-allowed' || event.error === 'service-not-allowed'
-              ? 'マイクへのアクセスを許可してください'
-              : event.error === 'no-speech'
-                ? '音声が検出されませんでした'
-                : event.error === 'audio-capture'
-                  ? 'マイクが検出できませんでした'
-                  : `音声入力エラー: ${event.error}`;
+          const detail = speechErrorMessages[event.error] || `音声入力エラー: ${event.error}`;
           showToast(detail);
-          if (event.error === 'not-allowed' || event.error === 'service-not-allowed' || event.error === 'audio-capture') {
+          if (fatalSpeechErrors.includes(event.error)) {
             micDenied = true;
             disableVoiceButton('音声入力非対応', detail);
           }
@@ -291,7 +292,19 @@
             recognition.start();
           } catch(e) {
             voiceKeepAlive = false;
-            showToast('音声入力を開始できませんでした');
+            const message =
+              e.name === 'NotAllowedError'
+                ? 'マイクへのアクセスを許可してください'
+                : e.name === 'NotFoundError'
+                  ? 'マイクが検出できませんでした'
+                  : e.name === 'NotSupportedError'
+                    ? 'このブラウザでは音声入力を利用できません'
+                    : '音声入力を開始できませんでした';
+            showToast(message);
+            if (['NotAllowedError','NotFoundError','NotSupportedError'].includes(e.name)) {
+              micDenied = true;
+              disableVoiceButton('音声入力非対応', message);
+            }
           }
         });
       } else if (voiceBtn) {
