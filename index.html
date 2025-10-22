@@ -172,6 +172,27 @@
       let recognition = null;
       let voiceKeepAlive = false;
       let voiceListening = false;
+      let micReady = false;
+      let micDenied = false;
+
+      function disableVoiceButton(text, tooltip, toastMessage){
+        if (!voiceBtn) return;
+        voiceBtn.disabled = true;
+        voiceBtn.textContent = text;
+        voiceBtn.title = tooltip || text;
+        voiceBtn.classList.remove('listening');
+        if (toastMessage) { showToast(toastMessage); }
+      }
+
+      async function requestMicAccess(){
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          const err = new Error('unsupported');
+          err.name = 'NotSupportedError';
+          throw err;
+        }
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        stream.getTracks().forEach(track => track.stop()); // 取得したトラックは即停止して解放
+      }
 
       function setVoiceState(active){
         voiceListening = !!active;
@@ -191,7 +212,6 @@
         if (!hasStarted && !timerId && remaining === duration) { start(); }
         plainEl.focus();
       }
-
       if (SpeechRecognition && voiceBtn) {
         recognition = new SpeechRecognition();
         recognition.lang = 'ja-JP';
@@ -227,15 +247,44 @@
         recognition.addEventListener('error', (event)=>{
           voiceKeepAlive = false;
           setVoiceState(false);
-          showToast(event.error === 'not-allowed' ? 'マイクへのアクセスを許可してください' : '音声入力エラーが発生しました');
+          const detail =
+            event.error === 'not-allowed' || event.error === 'service-not-allowed'
+              ? 'マイクへのアクセスを許可してください'
+              : event.error === 'no-speech'
+                ? '音声が検出されませんでした'
+                : event.error === 'audio-capture'
+                  ? 'マイクが検出できませんでした'
+                  : `音声入力エラー: ${event.error}`;
+          showToast(detail);
+          if (event.error === 'not-allowed' || event.error === 'service-not-allowed' || event.error === 'audio-capture') {
+            micDenied = true;
+            disableVoiceButton('音声入力非対応', detail);
+          }
         });
 
-        voiceBtn.addEventListener('click', ()=>{
-          if (!recognition) return;
+        voiceBtn.addEventListener('click', async ()=>{
+          if (!recognition) {
+            disableVoiceButton('音声入力非対応', '音声入力機能を初期化できませんでした', 'このブラウザでは音声入力を利用できません');
+            return;
+          }
           if (voiceListening || voiceKeepAlive) {
             voiceKeepAlive = false;
             try { recognition.stop(); } catch(e) { setVoiceState(false); }
             return;
+          }
+          if (!micReady && !micDenied) {
+            try {
+              await requestMicAccess();
+              micReady = true;
+            } catch(err) {
+              micDenied = true;
+              const message =
+                err.name === 'NotAllowedError'
+                  ? 'マイクへのアクセスを許可してください'
+                  : 'このブラウザではマイクを利用できません';
+              disableVoiceButton('音声入力非対応', message, message);
+              return;
+            }
           }
           voiceKeepAlive = true;
           try {
@@ -246,9 +295,7 @@
           }
         });
       } else if (voiceBtn) {
-        voiceBtn.disabled = true;
-        voiceBtn.textContent = '音声入力非対応';
-        voiceBtn.title = 'ブラウザが音声入力に対応していません';
+        disableVoiceButton('音声入力非対応', 'ブラウザが音声入力に対応していません', 'このブラウザでは音声入力を利用できません');
       }
       window.addEventListener('beforeunload', ()=>{ voiceKeepAlive = false; if (recognition && voiceListening) { try { recognition.stop(); } catch(e) {} } });
       const STORAGE_KEY = 'pd_plain_v3';
