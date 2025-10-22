@@ -479,6 +479,28 @@
           baseScore:1
         }
       ];
+      const MAGIC_DESCRIPTORS = {
+        temperature: [
+          {keywords:['熱','炎','燃','灼','夏','汗','灼熱','灼け'], phrase:'焦げた夜風'},
+          {keywords:['冷','氷','雪','凍','冬','寒','霜','冷たい'], phrase:'透きとおる朝霧'},
+          {keywords:['雨','湿','雫','涙','霧','霜','夜'], phrase:'湿った月影'},
+        ],
+        brightness: [
+          {keywords:['光','輝','明','朝','陽','星','煌','キラ','ネオン','煌め'], phrase:'きらめくネオン'},
+          {keywords:['暗','影','闇','夜','深夜','黒','月','黄昏'], phrase:'煤けた月光'},
+          {keywords:['柔','淡','霞','薄','春','桜','優','柔ら'], phrase:'淡く溶ける薄明'},
+        ],
+        motion: [
+          {keywords:['走','駆','速','急','攻','疾走','高鳴','突き抜け','ドライブ','スピード'], phrase:'駆け抜けるビート'},
+          {keywords:['揺','緩','ゆっくり','漂','揺ら','チル','まどろ','穏やか'], phrase:'揺らぐ鼓動'},
+          {keywords:['静','止','凍','固','余韻','静寂','沈黙','静け'], phrase:'静かに滲むリズム'},
+        ]
+      };
+      const MAGIC_FALLBACK = {
+        temperature: 'ぬくもりを抱く風',
+        brightness: 'ぼんやり灯る街灯',
+        motion: '呼吸するグルーヴ'
+      };
       function normalizeMusicText(text){
         const raw = text || '';
         const lower = raw.toLowerCase();
@@ -539,6 +561,28 @@
         return {...best, origin:'auto'};
       }
 
+      function pickMagicPhrase(ctx, axis){
+        const descriptors = MAGIC_DESCRIPTORS[axis] || [];
+        for (const item of descriptors){
+          if ((item.keywords || []).some(kw=> ctx.raw.includes(kw) || ctx.lower.includes(kw.toLowerCase()))) {
+            return item.phrase;
+          }
+        }
+        return MAGIC_FALLBACK[axis];
+      }
+
+      function buildMagicPhrase(text){
+        const ctx = normalizeMusicText(text);
+        const temp = pickMagicPhrase(ctx, 'temperature');
+        const light = pickMagicPhrase(ctx, 'brightness');
+        const motion = pickMagicPhrase(ctx, 'motion');
+        // 同じフレーズが続かないよう、重複時はフォールバックへ差し替え
+        const dedupTemp = temp;
+        const dedupLight = light === dedupTemp ? MAGIC_FALLBACK.brightness : light;
+        const dedupMotion = motion === dedupTemp || motion === dedupLight ? MAGIC_FALLBACK.motion : motion;
+        return `${dedupTemp}と${dedupLight}、${dedupMotion}`;
+      }
+
       function inferImage(text){
         const t = text || '';
         if (['夜','ネオン','都会'].some(k=>t.includes(k))) return {style:'cinematic night, neon lights, high contrast', subject:'夜の街並み'};
@@ -567,6 +611,7 @@
         const full = (text || '');
         const m = inferMusic(text);
         const img = inferImage(text);
+        const magic = buildMagicPhrase(full);
 
         const inputLen = full.length;
         const chatSeed = [
@@ -584,6 +629,7 @@
           '- Sunoに貼れる依頼文（1〜5行、先頭に［STYLE:〜］［MOOD:〜］［BPM:〜］［INSTRUMENTS:〜］形式で音楽性を明記）',
           `- 画像の提案（例: シーン=${img.subject}, スタイル=${img.style})`,
           '- 画像生成向けの1行プロンプト',
+          `- 魔法のひとこと（音楽性を喚起する短い比喩）: ${magic}`,
           '- 以後はこの結果を起点に日本語で会話しながら調整する',
           '',
           '【プレゼン作り方 — 完結版】に基づくプレゼン案も出力してください:',
@@ -639,6 +685,7 @@
         const text = currentText();
         const s = summary(text);
         const m = inferMusic(text);
+        const magic = buildMagicPhrase(text);
         const seed = [
           'Suno への依頼（貼り付け用）:',
           `［STYLE:${m.style}］［MOOD:${m.mood}］［BPM:${m.bpm}］［INSTRUMENTS:${m.instruments.join('・') || '任意'}］`,
@@ -646,6 +693,7 @@
           `- BPM: ${m.bpm}`,
           `- 編成: ${m.instruments.join(', ') || '(任意)'}`,
           `- 音楽性（雰囲気）: ${m.mood}`,
+          `- 魔法のひとこと: ${magic}`,
           '- 構成: Intro(8) → Verse(16) → Chorus(16) → Bridge(8) → Chorus(16) → Outro(8)',
           `- キーワード: ${s}`,
           '雰囲気に合う短い日本語のボーカルフレーズを入れてください（任意）。',
@@ -659,6 +707,7 @@
         const full = (text || '');
         const s = summary(text);
         const m = inferMusic(text);
+        const magic = buildMagicPhrase(full);
         const style = (m.style.includes('trap') || m.bpm >= 130) ? 'modern trap' : 'boom bap / lo-fi';
         const tempo = m.bpm >= 120 ? '速め' : (m.bpm >= 90 ? '中庸' : '遅め');
         const mood = m.mood || '柔らかな音楽性';
@@ -668,6 +717,7 @@
           `- ベースとなる音楽スタイル: ${style}（目安。素材に合うなら変更してOK）`,
           `- テンポ感: ${tempo}`,
           `- 音楽性・雰囲気: ${mood}`,
+          `- 魔法のひとこと: ${magic}`,
           '',
           '【素材（全文）】',
           full || '(なし)',
