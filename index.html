@@ -647,10 +647,14 @@
       function generateAdvice(){
         const text = currentText();
         const s = summary(text);
+        const full = text || '';
         const chatSeed = [
           '以下の文章に対して、執筆を前に進めるための具体的なアドバイスをください。',
           '',
-          `【対象テキスト】\n${s || '(なし)'}`,
+          `【対象テキスト要約】\n${s || '(なし)'}`,
+          '',
+          '【対象テキスト（全文）】',
+          full || '(なし)',
           '',
           '【欲しい出力】',
           '- 視点の整理（何を主張したいか1〜2文）',
@@ -686,6 +690,7 @@
         const s = summary(text);
         const m = inferMusic(text);
         const magic = buildMagicPhrase(text);
+        const full = text || '';
         const seed = [
           'Suno への依頼（貼り付け用）:',
           `［STYLE:${m.style}］［MOOD:${m.mood}］［BPM:${m.bpm}］［INSTRUMENTS:${m.instruments.join('・') || '任意'}］`,
@@ -696,6 +701,9 @@
           `- 魔法のひとこと: ${magic}`,
           '- 構成: Intro(8) → Verse(16) → Chorus(16) → Bridge(8) → Chorus(16) → Outro(8)',
           `- キーワード: ${s}`,
+          '',
+          '【素材（全文）】',
+          full || '(なし)',
           '雰囲気に合う短い日本語のボーカルフレーズを入れてください（任意）。',
         ].join('\n');
         setOutput(seed);
@@ -738,11 +746,15 @@
         const text = currentText();
         const s = summary(text);
         const img = inferImage(text);
+        const full = text || '';
         const seed = [
           '画像生成 依頼文（貼り付け用）:',
           `- シーン: ${img.subject}（文章の要約に基づく）`,
           `- スタイル: ${img.style}`,
           `- テキスト要約: ${s}`,
+          '',
+          '【参考テキスト（全文）】',
+          full || '(なし)',
           '1行プロンプト:',
           `${img.subject}, ${img.style}, high detail, soft light, 16:9`,
         ].join('\n');
