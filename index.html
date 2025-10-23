@@ -646,12 +646,9 @@
 
       function generateAdvice(){
         const text = currentText();
-        const s = summary(text);
         const full = text || '';
         const chatSeed = [
           '以下の文章に対して、執筆を前に進めるための具体的なアドバイスをください。',
-          '',
-          `【対象テキスト要約】\n${s || '(なし)'}`,
           '',
           '【対象テキスト（全文）】',
           full || '(なし)',
