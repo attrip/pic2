@@ -710,7 +710,6 @@
       function generateRap(){
         const text = currentText();
         const full = (text || '');
-        const s = summary(text);
         const m = inferMusic(text);
         const magic = buildMagicPhrase(full);
         const style = (m.style.includes('trap') || m.bpm >= 130) ? 'modern trap' : 'boom bap / lo-fi';
@@ -718,7 +717,7 @@
         const mood = m.mood || '柔らかな音楽性';
         const seed = [
           'ラップ作成依頼（貼り付け用）:',
-          `- テーマ: ${s}`,
+          '- テーマ: （以下の全文を参照）',
           `- ベースとなる音楽スタイル: ${style}（目安。素材に合うなら変更してOK）`,
           `- テンポ感: ${tempo}`,
           `- 音楽性・雰囲気: ${mood}`,
