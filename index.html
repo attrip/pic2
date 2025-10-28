@@ -33,6 +33,19 @@
       .out h3 { margin: 18px 0 8px; }
       textarea.output { width: 100%; background: #0c0c0c; color: #e5ffe5; padding: 14px; border-radius: 10px; box-sizing: border-box; min-height: 120px; white-space: pre-wrap; height: auto; overflow: auto; }
       .small { color: var(--muted); font-size: .9em; }
+      .history { margin-top: 32px; padding: 18px 18px 22px; border-radius: 14px; border: 1px solid #ecdfcf; background: #fffaf2; box-shadow: 0 8px 24px rgba(0,0,0,.04); }
+      .history.hidden { display: none; }
+      .historyHeader { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+      .historyHeader h3 { margin: 0; }
+      .historyList { display: flex; flex-direction: column; gap: 12px; margin-top: 14px; }
+      .historyItem { padding: 12px 14px 14px; border-radius: 10px; border: 1px solid #e5d8c6; background: #fff; box-shadow: 0 4px 18px rgba(0,0,0,.05); }
+      .historyItemTitle { margin: 0 0 4px; font-weight: 650; }
+      .historyItemMeta { margin: 0 0 10px; color: var(--muted); font-size: 0.86em; letter-spacing: 0.1px; }
+      .historyItemPreview { margin: 0 0 12px; color: var(--muted); font-size: 0.92em; white-space: pre-wrap; }
+      .historyItemActions { display: flex; gap: 8px; flex-wrap: wrap; }
+      .historyEmpty { color: var(--muted); font-size: 0.9em; }
+      .ghost { background: #f4efe6; color: #533; }
+      .ghost:hover { filter: brightness(0.97); }
       a { color: #06c; text-decoration: none; }
       a:hover { text-decoration: underline; }
 
@@ -79,6 +92,8 @@
         <button id="tagRap">＋ラップタグ</button>
         <button id="tagImage">＋画像タグ</button>
         <button id="voice">音声入力</button>
+        <button id="saveHistory">履歴保存</button>
+        <button id="toggleHistory" aria-expanded="false">履歴</button>
       </div>
       <p class="small" id="voiceNotice">音声入力はデスクトップ版 Chrome / Edge でのみ動作します。Atlas や Safari などでは利用できません。</p>
       <!-- チャットUIは削除 -->
@@ -99,6 +114,15 @@
         <button id="saveTxt">.txt保存</button>
         <a href="https://chat.openai.com/" target="_blank" rel="noopener noreferrer"><button>ChatGPT を開く</button></a>
       </div>
+      </section>
+      <section id="history" class="history hidden" aria-live="polite">
+      <div class="historyHeader">
+        <h3>履歴</h3>
+        <div class="historyItemActions">
+          <button id="clearHistory" class="ghost">全削除</button>
+        </div>
+      </div>
+      <div id="historyList" class="historyList"></div>
       </section>
     </div>
     <div id="toast" role="status" aria-live="polite"></div>
@@ -311,9 +335,202 @@
       }
       function getAllText(){ return plainEl.value || ''; }
       function updateCounts(){ const t = getAllText(); const words=(t.trim().match(/\S+/g)||[]).length; el('wc').textContent=String(words); el('cc').textContent=String(t.length); }
+
+      // 履歴管理: 入力内容をローカルストレージに保存して一覧表示
+      const HISTORY_KEY = 'pd_plain_history_v1';
+      const MAX_HISTORY_ITEMS = 150;
+      const historySection = el('history');
+      const historyListEl = el('historyList');
+      const toggleHistoryBtn = el('toggleHistory');
+      const saveHistoryBtn = el('saveHistory');
+      const clearHistoryBtn = el('clearHistory');
+      let historyEntries = [];
+
+      function escapeHtml(text){
+        if (text == null) { return ''; }
+        const map = { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' };
+        map['\''] = '&#39;';
+        return String(text).replace(/[&<>"']/g, (ch)=> map[ch] || ch);
+      }
+
+      function loadHistory(){
+        try {
+          const raw = localStorage.getItem(HISTORY_KEY);
+          if (!raw) { return []; }
+          const parsed = JSON.parse(raw);
+          if (!Array.isArray(parsed)) { return []; }
+          return parsed.filter((entry)=> entry && typeof entry.body === 'string' && typeof entry.id === 'string');
+        } catch(e) {
+          return [];
+        }
+      }
+
+      function persistHistory(){
+        try { localStorage.setItem(HISTORY_KEY, JSON.stringify(historyEntries)); } catch(e) {}
+      }
+
+      function setHistoryVisibility(visible){
+        if (!historySection || !toggleHistoryBtn) { return; }
+        historySection.classList.toggle('hidden', !visible);
+        toggleHistoryBtn.setAttribute('aria-expanded', visible ? 'true' : 'false');
+      }
+
+      function formatHistoryTimestamp(isoString){
+        if (!isoString) { return ''; }
+        const date = new Date(isoString);
+        if (Number.isNaN(date.getTime())) { return ''; }
+        return `${date.getFullYear()}-${fmt(date.getMonth()+1)}-${fmt(date.getDate())} ${fmt(date.getHours())}:${fmt(date.getMinutes())}`;
+      }
+
+      function extractTitleLine(text){
+        if (!text) { return ''; }
+        const lines = text.split(/\r?\n/);
+        for (const rawLine of lines) {
+          const line = rawLine.trim();
+          if (line.length > 0) { return line; }
+        }
+        return '';
+      }
+
+      function buildHistoryEntry(content){
+        const trimmed = (content || '').trim();
+        if (!trimmed) { return null; }
+        const createdAt = new Date().toISOString();
+        const firstLine = extractTitleLine(content) || '無題';
+        const datePrefix = createdAt.slice(0, 10);
+        const title = /^\d{4}-\d{2}-\d{2}\b/.test(firstLine) ? firstLine : `${datePrefix} ${firstLine}`.trim();
+        return {
+          id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          title,
+          body: content,
+          createdAt
+        };
+      }
+
+      function renderHistory(){
+        if (!historyListEl) { return; }
+        if (!historyEntries.length) {
+          historyListEl.innerHTML = '<p class="historyEmpty">まだ履歴がありません。</p>';
+          return;
+        }
+        const html = historyEntries.map((entry)=>{
+          const meta = formatHistoryTimestamp(entry.createdAt) || '保存日時不明';
+          const preview = summary(entry.body || '').trim();
+          const previewHtml = preview ? `<p class="historyItemPreview">${escapeHtml(preview)}</p>` : '';
+          return `\
+<article class="historyItem" data-id="${escapeHtml(entry.id)}">\
+  <p class="historyItemTitle">${escapeHtml(entry.title || '無題')}</p>\
+  <p class="historyItemMeta">${escapeHtml(meta)}</p>\
+  ${previewHtml}\
+  <div class="historyItemActions">\
+    <button data-action="load">読み込む</button>\
+    <button data-action="copy">コピー</button>\
+    <button data-action="delete" class="ghost">削除</button>\
+  </div>\
+</article>`; }).join('');
+        historyListEl.innerHTML = html;
+      }
+
+      function addHistory(content){
+        const entry = buildHistoryEntry(content);
+        if (!entry) { return false; }
+        historyEntries = [entry, ...historyEntries].slice(0, MAX_HISTORY_ITEMS);
+        persistHistory();
+        renderHistory();
+        return true;
+      }
+
+      historyEntries = loadHistory();
+      renderHistory();
+      setHistoryVisibility(false);
+
+      if (toggleHistoryBtn) {
+        toggleHistoryBtn.addEventListener('click', ()=>{
+          const shouldShow = historySection ? historySection.classList.contains('hidden') : true;
+          setHistoryVisibility(shouldShow);
+          if (shouldShow && !historyEntries.length) { showToast('まだ履歴はありません'); }
+        });
+      }
+
+      if (saveHistoryBtn) {
+        saveHistoryBtn.addEventListener('click', ()=>{
+          const text = getAllText();
+          if (!text.trim()) {
+            showToast('保存する内容がありません');
+            return;
+          }
+          if (addHistory(text)) {
+            setHistoryVisibility(true);
+            showToast('履歴に保存しました');
+          } else {
+            showToast('保存する内容がありません');
+          }
+        });
+      }
+
+      if (clearHistoryBtn) {
+        clearHistoryBtn.addEventListener('click', ()=>{
+          if (!historyEntries.length) {
+            showToast('削除する履歴がありません');
+            return;
+          }
+          if (!window.confirm('履歴をすべて削除しますか？')) { return; }
+          historyEntries = [];
+          persistHistory();
+          renderHistory();
+          showToast('履歴を削除しました');
+        });
+      }
+
+      if (historyListEl) {
+        historyListEl.addEventListener('click', async (event)=>{
+          const target = event.target;
+          if (!(target instanceof HTMLElement)) { return; }
+          const action = target.getAttribute('data-action');
+          if (!action) { return; }
+          const item = target.closest('.historyItem');
+          if (!item) { return; }
+          const id = item.getAttribute('data-id');
+          const entry = historyEntries.find((hist)=> hist.id === id);
+          if (!entry) { return; }
+          if (action === 'load') {
+            plainEl.value = entry.body;
+            updateCounts();
+            queueSave();
+            showToast('履歴を読み込みました');
+            plainEl.focus();
+          } else if (action === 'copy') {
+            try {
+              if (navigator.clipboard && navigator.clipboard.writeText) {
+                await navigator.clipboard.writeText(entry.body);
+              } else {
+                const temp = document.createElement('textarea');
+                temp.value = entry.body;
+                temp.style.position = 'fixed';
+                temp.style.opacity = '0';
+                document.body.appendChild(temp);
+                temp.focus();
+                temp.select();
+                document.execCommand('copy');
+                document.body.removeChild(temp);
+              }
+              showToast('履歴をコピーしました');
+            } catch(e) {
+              showToast('コピーに失敗しました');
+            }
+          } else if (action === 'delete') {
+            if (!window.confirm('この履歴を削除しますか？')) { return; }
+            historyEntries = historyEntries.filter((hist)=> hist.id !== entry.id);
+            persistHistory();
+            renderHistory();
+            showToast('履歴を削除しました');
+          }
+        });
+      }
       // 旧キーのクリアはしない（自動削除は事故の元）、必要なら新キーへ移行
       // 起動時に保存内容を復元
       loadSaved();
+      updateCounts();
       // 入力開始でタイマー開始
       plainEl.addEventListener('input', ()=>{
         if(!hasStarted && !timerId && remaining===duration){ start(); }
