@@ -210,12 +210,24 @@
         voiceBtn.classList.toggle('listening', !!active);
       }
 
+      function normalizeDictation(text){
+        if (!text) { return ''; }
+        // Allowing simple verbal commands such as 「まる」→「。」 and 「てん」→「、」
+        return text
+          .replace(/(まる|マル)/g, '。')
+          .replace(/(てん|テン)/g, '、');
+      }
+
       function appendVoiceText(text){
         if (!text) return;
         const trimmed = text.trim();
         if (!trimmed) return;
         const needsBreak = plainEl.value && !plainEl.value.endsWith('\n');
         plainEl.value += (needsBreak ? '\n' : '') + trimmed + '\n';
+        const len = plainEl.value.length;
+        // Keep caret and scroll at the newest dictated text so users see where input landed
+        try { plainEl.setSelectionRange(len, len); } catch(e) {}
+        plainEl.scrollTop = plainEl.scrollHeight;
         updateCounts();
         queueSave();
         if (!hasStarted && !timerId && remaining === duration) { start(); }
@@ -235,7 +247,7 @@
               transcript += res[0].transcript;
             }
           }
-          appendVoiceText(transcript);
+          appendVoiceText(normalizeDictation(transcript));
         });
 
         recognition.addEventListener('start', ()=>{
@@ -1029,10 +1041,11 @@
         const t = plainEl.value || '';
         const start = plainEl.selectionStart ?? t.length;
         const end = plainEl.selectionEnd ?? start;
-        const before = t.slice(0, end);
+        const before = t.slice(0, start);
+        const selection = t.slice(start, end);
         const after = t.slice(end);
         const ins = (before && !/\s$/.test(before) ? ' ' : '') + text + ' ';
-        plainEl.value = before + ins + after;
+        plainEl.value = before + ins + selection + after;
         const caret = (before + ins).length;
         plainEl.setSelectionRange(caret, caret);
         plainEl.focus();
